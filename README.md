@@ -82,3 +82,8 @@ APK собирается автоматически в GitHub Actions:
 ```
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`. Нужны JDK 17 и Android SDK 35.
+
+---
+
+В этом же репозитории лежит второе приложение — **Бауманка** (расписание, сроки и баллы), папка
+[`bauman/`](bauman/README.md). Его APK — в релизах «Бауманка (сборка N)».

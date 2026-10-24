@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#F4F1EA</color>
+    <color name="raised">#FBF9F4</color>
+    <color name="ink">#1B1A18</color>
+    <color name="ink2">#615D55</color>
+    <color name="ink3">#A19C91</color>
+    <color name="line">#DCD6C9</color>
+    <color name="accent">#2343A8</color>
+    <color name="hot">#C0391B</color>
+    <color name="icon_bg">#2343A8</color>
+    <color name="icon_fg">#F4F1EA</color>
+</resources>

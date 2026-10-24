@@ -1,0 +1,52 @@
+name: Build Bauman APK
+
+on:
+  push:
+    paths:
+      - "bauman/**"
+      - ".github/workflows/bauman.yml"
+  pull_request:
+    paths:
+      - "bauman/**"
+      - ".github/workflows/bauman.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test and build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon -p bauman testDebugUnitTest assembleDebug
+          cp bauman/build/outputs/apk/debug/bauman-debug.apk Baumanka.apk
+
+      # Optional: fails when the account's Actions storage quota is full; the release below does not use it.
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: Baumanka-apk
+          path: Baumanka.apk
+
+      # Not "latest": the latest release stays YT Фон, which its README links to.
+      - name: Publish release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: bauman-${{ github.run_number }}
+          name: Бауманка (сборка ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          make_latest: false
+          files: Baumanka.apk

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Бауманка</string>
+    <string name="widget_name">Пары и сроки</string>
+    <string name="widget_description">Неделя, текущая или следующая пара и ближайший срок</string>
+</resources>
