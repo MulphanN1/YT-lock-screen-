@@ -24,4 +24,6 @@
     <string name="ad_block_on">Реклама блокируется</string>
     <string name="ad_block_off">Блокировка рекламы выключена</string>
     <string name="close">Закрыть</string>
+    <string name="last_pause">Последняя пауза: %1$s</string>
+    <string name="no_pauses">Пауз пока не было</string>
 </resources>

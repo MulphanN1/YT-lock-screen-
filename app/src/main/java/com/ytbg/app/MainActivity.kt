@@ -118,6 +118,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         setupWebView()
         setupChips()
         powerButton.setOnClickListener { toggle() }
+        powerButton.setOnLongClickListener {
+            val message = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
+                ?: getString(R.string.no_pauses)
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            true
+        }
 
         PlayerBridge.controller = this
         PlayerBridge.addListener(this)
@@ -367,7 +373,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     }
 
     private fun pauseInBackground() {
-        webView.evaluateJavascript(Scripts.PAUSE, null)
+        PlayerBridge.pause("приложение свёрнуто, фоновый режим выключен")
         webView.onPause()
     }
 

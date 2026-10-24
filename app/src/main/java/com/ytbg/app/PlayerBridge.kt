@@ -3,6 +3,7 @@ package com.ytbg.app
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.format.DateFormat
 
 /** What the page's player is doing right now, as reported by [Scripts]. */
 data class PlaybackInfo(
@@ -57,6 +58,20 @@ object PlayerBridge {
     var info = PlaybackInfo()
         private set
 
+    /** Who paused playback last and when; shown on a long press of the power button. */
+    var lastPause: String? = null
+        private set
+
+    private var lastCommand: String? = null
+    private var lastCommandAt = 0L
+
+    /** Pauses the player and remembers [source] so an unexpected pause can be traced. */
+    fun pause(source: String) {
+        lastCommand = source
+        lastCommandAt = SystemClock.elapsedRealtime()
+        controller?.pause()
+    }
+
     private val main = Handler(Looper.getMainLooper())
     private val listeners = LinkedHashSet<Listener>()
 
@@ -72,6 +87,11 @@ object PlayerBridge {
     fun reportPlayback(newInfo: PlaybackInfo) {
         main.post {
             if (newInfo.sameTrackAndState(info)) return@post
+            if (info.playing && !newInfo.playing) {
+                val recent = SystemClock.elapsedRealtime() - lastCommandAt < COMMAND_WINDOW_MS
+                val source = if (recent) lastCommand else "сама страница YouTube"
+                lastPause = "$source, ${DateFormat.format("HH:mm:ss", System.currentTimeMillis())}"
+            }
             info = newInfo
             listeners.toList().forEach { it.onPlaybackChanged(newInfo) }
         }
@@ -80,4 +100,6 @@ object PlayerBridge {
     fun reportBackgroundMode(enabled: Boolean) {
         main.post { listeners.toList().forEach { it.onBackgroundModeChanged(enabled) } }
     }
+
+    private const val COMMAND_WINDOW_MS = 2000L
 }

@@ -6,10 +6,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -49,14 +47,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     private var artworkUrl: String? = null
     private var artwork: Bitmap? = null
 
-    /** Headphones unplugged / Bluetooth disconnected: pause like every music player does. */
-    private val noisyReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            PlayerBridge.controller?.pause()
-        }
-    }
-    private var noisyRegistered = false
-
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
@@ -71,7 +61,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
                 }
 
                 override fun onPause() {
-                    PlayerBridge.controller?.pause()
+                    PlayerBridge.pause("система (команда паузы)")
                 }
 
                 override fun onSkipToNext() {
@@ -87,7 +77,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
                 }
 
                 override fun onStop() {
-                    close()
+                    close("система (команда стоп)")
                 }
             })
             setSessionActivity(openAppIntent())
@@ -110,11 +100,16 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_PLAY -> PlayerBridge.controller?.play()
-            ACTION_PAUSE -> PlayerBridge.controller?.pause()
+            ACTION_PAUSE -> PlayerBridge.pause("кнопка в уведомлении")
             ACTION_NEXT -> PlayerBridge.controller?.next()
             ACTION_PREVIOUS -> PlayerBridge.controller?.previous()
             ACTION_CLOSE -> {
-                close()
+                close("кнопка «×» в уведомлении")
+                return START_NOT_STICKY
+            }
+            ACTION_DISMISS -> {
+                // Swiped away: only possible while paused, so there is nothing to pause.
+                if (!PlayerBridge.info.playing) stopSelf()
                 return START_NOT_STICKY
             }
         }
@@ -151,7 +146,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         PlayerBridge.removeListener(this)
         main.removeCallbacksAndMessages(null)
         artworkLoader.shutdownNow()
-        setNoisyReceiver(false)
         session.isActive = false
         session.release()
         wakeLock?.takeIf { it.isHeld }?.release()
@@ -160,15 +154,14 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     }
 
     /** The "×" button: pause and hide the player. It comes back on the next play. */
-    private fun close() {
-        PlayerBridge.controller?.pause()
+    private fun close(source: String) {
+        PlayerBridge.pause(source)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun render(info: PlaybackInfo) {
         updateLocks(info.playing)
-        setNoisyReceiver(info.playing)
         loadArtwork(info.artworkUrl)
         session.setMetadata(metadata(info))
         session.setPlaybackState(
@@ -199,21 +192,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, info.durationMs)
             .apply { artwork?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) } }
             .build()
-
-    private fun setNoisyReceiver(on: Boolean) {
-        if (on == noisyRegistered) return
-        if (on) {
-            ContextCompat.registerReceiver(
-                this,
-                noisyReceiver,
-                IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
-                ContextCompat.RECEIVER_NOT_EXPORTED,
-            )
-        } else {
-            unregisterReceiver(noisyReceiver)
-        }
-        noisyRegistered = on
-    }
 
     private fun updateLocks(playing: Boolean) {
         if (playing) {
@@ -277,7 +255,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .setContentTitle(title(info))
             .setContentText(artist(info))
             .setContentIntent(openAppIntent())
-            .setDeleteIntent(serviceIntent(ACTION_CLOSE))
+            .setDeleteIntent(serviceIntent(ACTION_DISMISS))
             .setOngoing(info.playing)
             .setSilent(true)
             .setShowWhen(false)
@@ -340,6 +318,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         private const val ACTION_NEXT = "com.ytbg.app.NEXT"
         private const val ACTION_PREVIOUS = "com.ytbg.app.PREVIOUS"
         private const val ACTION_CLOSE = "com.ytbg.app.CLOSE"
+        private const val ACTION_DISMISS = "com.ytbg.app.DISMISS"
 
         var isRunning = false
             private set
