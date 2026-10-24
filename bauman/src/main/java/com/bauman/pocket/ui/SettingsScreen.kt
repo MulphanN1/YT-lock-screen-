@@ -1,5 +1,6 @@
 package com.bauman.pocket.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,8 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -69,67 +68,67 @@ fun SettingsScreen(
         }
 
         item {
-            SectionLabel("Откуда брать данные")
+            var editing by remember { mutableStateOf(state.token.isBlank()) }
+            var howTo by remember { mutableStateOf(false) }
+            SectionLabel("Данные")
             Column(Modifier.padding(horizontal = Gutter, vertical = 8.dp)) {
-                Text(
-                    "Расписание встроено в приложение. Сроки, контрольные и баллы приходят из твоего репозитория " +
-                        "bmstu-study: Claude обновляет его, приложение подтягивает изменения раз в 6 часов и при открытии.",
-                    style = Type.small, color = p.ink2,
-                )
-                Spacer(Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = repo, onValueChange = { repo = it.trim() }, singleLine = true,
-                    label = { Text("Репозиторий", style = Type.small) }, textStyle = Type.body,
-                    shape = RectangleShape, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = token, onValueChange = { token = it.trim() }, singleLine = true,
-                    label = { Text("Токен GitHub", style = Type.small) }, textStyle = Type.body,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    shape = RectangleShape, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(14.dp))
-                Button(
-                    onClick = { onSave(repo, token) }, enabled = !busy && token.isNotBlank(),
-                    shape = RectangleShape,
-                    colors = ButtonDefaults.buttonColors(containerColor = p.ink, contentColor = p.bg, disabledContainerColor = p.line, disabledContentColor = p.ink3),
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                ) {
-                    Text(if (busy) "Загружаю…" else "Сохранить и загрузить", style = Type.bodyStrong)
-                }
-                Spacer(Modifier.height(10.dp))
                 when {
                     state.error != null -> Text(state.error, style = Type.small, color = p.hot)
                     state.syncedAt > 0 -> {
                         val t = Instant.ofEpochMilli(state.syncedAt).atZone(Semester.ZONE).toLocalDateTime()
-                        Text("Загружено ${Ru.ddmm(t.toLocalDate())} в ${Ru.hm(t.toLocalTime())}", style = Type.small, color = p.ok)
+                        Text(
+                            "${state.repo} · загружено ${Ru.ddmm(t.toLocalDate())} в ${Ru.hm(t.toLocalTime())}",
+                            style = Type.small, color = p.ink2,
+                        )
+                    }
+                    else -> Text("Сроки и баллы берутся из bmstu-study — нужен токен GitHub", style = Type.small, color = p.ink2)
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (state.token.isNotBlank()) {
+                        FlatButton(if (busy) "Загружаю…" else "Обновить", filled = true) { if (!busy) onSave(state.repo, state.token) }
+                    }
+                    FlatButton(if (state.token.isBlank()) "Подключить" else "Токен", filled = false) { editing = !editing }
+                    FlatButton("Инструкция", filled = false) { howTo = !howTo }
+                }
+                if (editing) {
+                    Spacer(Modifier.height(14.dp))
+                    OutlinedTextField(
+                        value = repo, onValueChange = { repo = it.trim() }, singleLine = true,
+                        label = { Text("Репозиторий", style = Type.small) }, textStyle = Type.body,
+                        shape = RectangleShape, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = token, onValueChange = { token = it.trim() }, singleLine = true,
+                        label = { Text("Токен GitHub", style = Type.small) }, textStyle = Type.body,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        shape = RectangleShape, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    FlatButton("Сохранить и загрузить", filled = true) {
+                        if (!busy && token.isNotBlank()) {
+                            onSave(repo, token)
+                            editing = false
+                        }
                     }
                 }
-            }
-        }
-
-        item {
-            SectionLabel("Как получить токен")
-            Column(Modifier.padding(horizontal = Gutter, vertical = 8.dp)) {
-                listOf(
-                    "github.com → аватар → Settings → Developer settings.",
-                    "Personal access tokens → Fine-grained tokens → Generate new token.",
-                    "Repository access: Only select repositories → bmstu-study.",
-                    "Permissions → Repository → Contents: Read-only. Больше ничего не нужно.",
-                    "Срок — до конца семестра. Скопируй токен и вставь выше.",
-                ).forEachIndexed { i, s ->
-                    Row(Modifier.padding(vertical = 4.dp)) {
-                        Text("${i + 1}", style = Type.smallStrong, color = p.accent, modifier = Modifier.padding(end = 12.dp))
-                        Text(s, style = Type.small, color = p.ink)
+                if (howTo) {
+                    Spacer(Modifier.height(12.dp))
+                    listOf(
+                        "github.com → аватар → Settings → Developer settings.",
+                        "Personal access tokens → Fine-grained tokens → Generate new token.",
+                        "Repository access: Only select repositories → bmstu-study.",
+                        "Permissions → Repository → Contents: Read-only.",
+                        "Срок — до конца семестра. Вставь токен через «Токен».",
+                    ).forEachIndexed { i, line ->
+                        Row(Modifier.padding(vertical = 3.dp)) {
+                            Text("${i + 1}", style = Type.smallStrong, color = p.accent, modifier = Modifier.padding(end = 12.dp))
+                            Text(line, style = Type.small, color = p.ink)
+                        }
                     }
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Токен только читает один репозиторий и хранится в памяти приложения на телефоне.",
-                    style = Type.small, color = p.ink3,
-                )
             }
         }
 
@@ -149,21 +148,21 @@ fun SettingsScreen(
         }
 
         item {
-            SectionLabel("Если уведомления опаздывают")
+            var huawei by remember { mutableStateOf(false) }
+            Row(Modifier.padding(horizontal = Gutter, vertical = 8.dp)) {
+                FlatButton("Уведомления опаздывают?", filled = false) { huawei = !huawei }
+            }
+            if (huawei) {
+                Text(
+                    "Huawei и Honor усыпляют приложения в фоне. Настройки → Батарея → Запуск приложений → " +
+                        "Бауманка → выключи «Автоматически» и оставь включёнными все три пункта.",
+                    style = Type.small, color = p.ink2, modifier = Modifier.padding(horizontal = Gutter, vertical = 6.dp),
+                )
+            }
             Text(
-                "Huawei и Honor усыпляют приложения в фоне. Настройки → Батарея → Запуск приложений → " +
-                    "Бауманка → выключи «Автоматически» и оставь включёнными все три пункта.",
-                style = Type.small, color = p.ink2, modifier = Modifier.padding(horizontal = Gutter, vertical = 8.dp),
+                "Бауманка · ИУ3-13Б · шрифт Onest (OFL)",
+                style = Type.small, color = p.ink3, modifier = Modifier.padding(horizontal = Gutter, vertical = 24.dp),
             )
-        }
-
-        item {
-            SectionLabel("О приложении")
-            Text(
-                "Бауманка · ИУ3-13Б · семестр с 31 августа 2026. Шрифт Onest (SIL Open Font License).",
-                style = Type.small, color = p.ink3, modifier = Modifier.padding(horizontal = Gutter, vertical = 8.dp),
-            )
-            Spacer(Modifier.height(32.dp))
         }
     }
 }

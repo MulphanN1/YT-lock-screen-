@@ -27,7 +27,6 @@ fun LazyListScope.todayScreen(
     data: Data,
     at: LocalDateTime,
     onSettings: () -> Unit,
-    onAllDeadlines: () -> Unit,
 ) {
     val today = at.toLocalDate()
     val week = Semester.weekOf(today)
@@ -74,43 +73,6 @@ fun LazyListScope.todayScreen(
                 SectionLabel(label, "${Ru.dayMonthShort(focus)} · ${Semester.parityName(fw)}")
                 if (focusLessons.isEmpty()) Note("Пар нет") else DayLessons(focusLessons, null, isToday = false)
             }
-        }
-    }
-
-    val b = Plan.buckets(data, at)
-    val soon = b.upcoming.filter { it.start?.let { s -> s <= today.plusDays(7) } == true }
-    item("deadlines-label") {
-        val p = LocalPalette.current
-        val overdue = b.overdue.size
-        SectionLabel(
-            "Сроки на неделю",
-            if (overdue > 0) "не закрыто: $overdue" else null,
-            trailingColor = p.hot,
-        )
-    }
-    if (!data.personal) {
-        item("connect") {
-            val p = LocalPalette.current
-            Note("Сроки и баллы появятся, когда подключишь репозиторий bmstu-study. Открыть настройки →", p.accent, onSettings)
-        }
-    } else if (soon.isEmpty() && b.overdue.isEmpty()) {
-        item("free") { Note("На ближайшие 7 дней сроков нет") }
-    } else {
-        b.overdue.take(3).forEachIndexed { i, it ->
-            item("o-$i-${it.key}") {
-                if (i > 0) Hairline(Modifier.padding(horizontal = Gutter))
-                ItemRow(it, at, overdue = true)
-            }
-        }
-        soon.take(5).forEachIndexed { i, it ->
-            item("s-$i-${it.key}") {
-                if (i > 0 || b.overdue.isNotEmpty()) Hairline(Modifier.padding(horizontal = Gutter))
-                ItemRow(it, at)
-            }
-        }
-        item("all") {
-            val p = LocalPalette.current
-            Note("Все сроки →", p.accent, onAllDeadlines)
         }
     }
 
@@ -180,7 +142,7 @@ private fun BigLesson(label: String, trailing: String, l: Lesson, progress: Floa
                 Text(l.title, style = Type.title, color = p.ink, modifier = Modifier.weight(1f))
                 if (l.room != null) Text(l.room, style = Type.title, color = p.accent)
             }
-            val meta = listOfNotNull(l.kind, l.teacher, l.note).joinToString(" · ")
+            val meta = listOfNotNull(l.kind, l.teacher, l.note).joinToString(" ⋅ ")
             if (meta.isNotEmpty()) {
                 Spacer(Modifier.height(2.dp))
                 Text(meta, style = Type.body, color = p.ink2)

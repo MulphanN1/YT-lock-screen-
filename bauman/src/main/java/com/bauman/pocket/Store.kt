@@ -22,6 +22,7 @@ object Store {
         "university/rk-dates.md",
         "university/brs.md",
         "university/lks-plan.md",
+        "university/contacts.md",
     )
 
     fun prefs(ctx: Context): SharedPreferences = ctx.getSharedPreferences("bauman", Context.MODE_PRIVATE)
@@ -49,9 +50,13 @@ object Store {
         val rk = read(ctx, "university/rk-dates.md", asset = false)
         val brs = read(ctx, "university/brs.md", asset = false)
         val lks = read(ctx, "university/lks-plan.md", asset = true).orEmpty()
+        val teachers = Md.teachers(read(ctx, "university/contacts.md", asset = false).orEmpty())
+        fun short(grid: List<List<Lesson>>) = grid.map { day ->
+            day.map { l -> l.copy(teacher = l.teacher?.let { Md.shortTeacher(it, teachers) }) }
+        }
         return Data(
-            numerator = num,
-            denominator = den,
+            numerator = short(num),
+            denominator = short(den),
             items = Md.items(deadlines.orEmpty(), Source.DEADLINE) + Md.items(rk.orEmpty(), Source.RK),
             lks = Md.lks(lks),
             grades = Md.grades(brs.orEmpty()),

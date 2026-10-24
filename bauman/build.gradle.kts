@@ -14,8 +14,9 @@ android {
         applicationId = "com.bauman.pocket"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Номер сборки CI: каждая следующая ставится поверх предыдущей.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionName = "1.$versionCode"
     }
 
     signingConfigs {
@@ -30,6 +31,13 @@ android {
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // Debug-сборка Compose заметно тормозит при прокрутке; в релиз идёт эта, с R8.
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.getByName("debug")
         }
     }

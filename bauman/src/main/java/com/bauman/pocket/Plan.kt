@@ -119,6 +119,45 @@ object Plan {
         else -> item.raw.ifEmpty { "без срока" }
     }
 
+    // ---------------------------------------------------------------- ответ Claude
+
+    data class Ask(val kind: String, val item: Item, val question: String)
+
+    /**
+     * Всё, на что Claude ждёт ответа: прошедшие сроки, ожидаемые результаты, вопросы и долги без даты.
+     * Студент вписывает ответы и отправляет текст в чат — Claude обновляет репозиторий.
+     */
+    fun asks(data: Data, at: LocalDateTime): List<Ask> {
+        val b = buckets(data, at)
+        return b.overdue.map { Ask("Событие", it, "Как прошло?") } +
+            b.waiting.map { Ask("Результат", it, "Что поставили?") } +
+            b.undated.map {
+                when {
+                    it.source == Source.RK -> Ask("Дата", it, "Объявили дату?")
+                    it.subj == "admin" || it.what.startsWith("Узнать") || it.what.startsWith("Уточнить") ->
+                        Ask("Вопрос", it, "Что выяснил?")
+                    else -> Ask("Долг", it, "Как продвигается?")
+                }
+            }
+    }
+
+    fun forClaude(asks: List<Ask>, at: LocalDateTime): String {
+        val today = at.toLocalDate()
+        val sb = StringBuilder()
+        sb.append("Бауманка → Claude, ${Ru.ddmm(today)}.${today.year}\n")
+        sb.append("Ответы по срокам. Обнови deadlines.md, rk-dates.md и brs.md; пустой ответ — пропусти.\n")
+        asks.forEachIndexed { i, a ->
+            val item = a.item
+            val head = listOfNotNull(a.kind, Semester.subject(item.subj), whenLabel(item).takeIf { item.dated })
+            sb.append("\n${i + 1}. ${head.joinToString(" · ")}\n")
+            sb.append(item.what).append("\n")
+            if (item.statusText.isNotEmpty()) sb.append("Сейчас: ${item.statusText}\n")
+            sb.append(a.question).append("\n")
+            sb.append("Ответ:\n")
+        }
+        return sb.toString()
+    }
+
     // ---------------------------------------------------------------- напоминания
 
     data class Reminder(val at: LocalDateTime, val item: Item, val title: String) {

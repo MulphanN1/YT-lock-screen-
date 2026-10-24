@@ -27,11 +27,11 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Test and build debug APK
+      - name: Test and build release APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon -p bauman testDebugUnitTest assembleDebug
-          cp bauman/build/outputs/apk/debug/bauman-debug.apk Baumanka.apk
+          ./gradlew --no-daemon -p bauman testReleaseUnitTest assembleRelease
+          cp bauman/build/outputs/apk/release/bauman-release.apk Baumanka.apk
 
       # Optional: fails when the account's Actions storage quota is full; the release below does not use it.
       - uses: actions/upload-artifact@v4

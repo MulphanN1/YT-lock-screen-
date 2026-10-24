@@ -150,12 +150,14 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun Root() {
         val p = LocalPalette.current
+        // Раз в минуту, ровно на её границе: экран перерисовывается только когда меняются минуты.
         val at by produceState(Semester.now()) {
             while (true) {
-                delay(15_000)
+                delay(60_000 - System.currentTimeMillis() % 60_000 + 50)
                 value = Semester.now()
             }
         }
+        val overdue = remember(data, at) { Plan.buckets(data, at).overdue.size }
         val states = Tab.entries.associateWith { rememberLazyListState() }
         var week by rememberSaveable { mutableIntStateOf(Semester.weekOf(at.toLocalDate()).coerceIn(1, Semester.WEEKS)) }
 
@@ -177,14 +179,14 @@ class MainActivity : ComponentActivity() {
                 PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh() }, modifier = Modifier.weight(1f)) {
                     LazyColumn(Modifier.fillMaxSize(), state = states.getValue(tab)) {
                         when (tab) {
-                            Tab.TODAY -> todayScreen(data, at, { showSettings = true }, { tab = Tab.DEADLINES })
+                            Tab.TODAY -> todayScreen(data, at) { showSettings = true }
                             Tab.WEEK -> weekScreen(data, at, week) { week = it }
                             Tab.DEADLINES -> deadlinesScreen(data, at) { showSettings = true }
                             Tab.GRADES -> gradesScreen(data) { showSettings = true }
                         }
                     }
                 }
-                Tabs(overdue = Plan.buckets(data, at).overdue.size)
+                Tabs(overdue)
             }
         }
     }

@@ -1,6 +1,15 @@
 package com.bauman.pocket.ui
 
+import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,12 +19,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bauman.pocket.Data
@@ -45,6 +56,9 @@ fun LazyListScope.deadlinesScreen(data: Data, at: LocalDateTime, onSettings: () 
         return
     }
 
+    val asks = Plan.asks(data, at)
+    if (asks.isNotEmpty()) item("claude") { ClaudeBlock(asks, at) }
+
     section("overdue", "Срок прошёл", "отметь у Claude, как прошло", b.overdue, at, overdue = true)
     section("upcoming", "Впереди", null, b.upcoming, at)
     section("waiting", "Ждём результат", null, b.waiting, at, showWhen = false)
@@ -71,6 +85,50 @@ private fun LazyListScope.section(
             if (i > 0) Hairline(Modifier.padding(horizontal = Gutter))
             ItemRow(it, at, overdue = overdue, showWhen = showWhen)
         }
+    }
+}
+
+@Composable
+private fun ClaudeBlock(asks: List<Plan.Ask>, at: LocalDateTime) {
+    val p = LocalPalette.current
+    val ctx = LocalContext.current
+    val counts = asks.groupingBy { it.kind }.eachCount().entries.joinToString(" · ") { "${it.key.lowercase()} ${it.value}" }
+    fun text() = Plan.forClaude(asks, at)
+    Column {
+        SectionLabel("Ответить Claude", counts)
+        Text(
+            "Соберу всё, о чём Claude ждёт ответа, в формате «вопрос — ответ». Впиши ответы и отправь " +
+                "в чат с Claude: он обновит сроки и баллы, а сюда они придут при обновлении.",
+            style = Type.small, color = p.ink2, modifier = Modifier.padding(horizontal = Gutter, vertical = 6.dp),
+        )
+        Row(Modifier.padding(horizontal = Gutter, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            FlatButton("Скопировать", filled = false) {
+                val cm = ctx.getSystemService(ClipboardManager::class.java)
+                cm.setPrimaryClip(ClipData.newPlainText("Бауманка → Claude", text()))
+                Toast.makeText(ctx, "Скопировано — вставь в чат с Claude", Toast.LENGTH_SHORT).show()
+            }
+            FlatButton("Открыть в Claude", filled = true) {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text())
+                try {
+                    ctx.startActivity(Intent(send).setPackage("com.anthropic.claude"))
+                } catch (_: ActivityNotFoundException) {
+                    ctx.startActivity(Intent.createChooser(send, "Отправить Claude"))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FlatButton(label: String, filled: Boolean, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Box(
+        Modifier
+            .then(if (filled) Modifier.background(p.ink) else Modifier.border(1.dp, p.ink))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+    ) {
+        Text(label, style = Type.smallStrong, color = if (filled) p.bg else p.ink)
     }
 }
 
@@ -102,7 +160,7 @@ fun LazyListScope.gradesScreen(data: Data, onSettings: () -> Unit) {
 private fun fmt(x: Double): String =
     if (x == Math.floor(x)) x.toLong().toString() else String.format(Locale("ru"), "%.1f", x)
 
-@androidx.compose.runtime.Composable
+@Composable
 private fun GradeBlock(g: Grade) {
     val p = LocalPalette.current
     var open by rememberSaveable(g.slug) { mutableStateOf(false) }

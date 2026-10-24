@@ -262,6 +262,30 @@ object Md {
         return (grids[true] ?: empty) to (grids[false] ?: empty)
     }
 
+    // ---------------------------------------------------------------- преподаватели
+
+    /** Фамилия → «Пинчук И.А.» из таблицы `| Предмет | ФИО | … |` в contacts.md. */
+    fun teachers(text: String): Map<String, String> {
+        val out = HashMap<String, String>()
+        for (t in tables(text)) {
+            val fi = t.header.indexOf("ФИО")
+            if (fi < 0) continue
+            for (row in t.rows) {
+                val words = clean(row.getOrElse(fi) { "" }).split(" ").filter { it.isNotEmpty() }
+                val surname = words.firstOrNull()?.takeIf { it.first().isLetter() } ?: continue
+                val initials = words.drop(1).take(2).joinToString("") { "${it.first()}." }
+                out[surname] = if (initials.isEmpty()) surname else "$surname $initials"
+            }
+        }
+        return out
+    }
+
+    /** «Палий, Михеенкова» → «Палий Н.В., Михеенкова»; кого нет в контактах — как в расписании. */
+    fun shortTeacher(raw: String, known: Map<String, String>): String =
+        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", ") { part ->
+            known[part.substringBefore(" ")] ?: part
+        }
+
     // ---------------------------------------------------------------- сетка ЛКС
 
     fun lks(text: String): Map<Int, List<LksMark>> {

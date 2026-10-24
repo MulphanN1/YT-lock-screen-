@@ -166,4 +166,34 @@ class ParseTest {
         assertEquals("21 день", Ru.days(21))
         assertEquals("1 ч 05 мин", Ru.duration(65))
     }
+
+    @Test
+    fun teacherInitials() {
+        val contacts = """
+            | Предмет | ФИО | Роль |
+            |---------|-----|------|
+            | Математический анализ | Пинчук Ирина Александровна | семинарист |
+            | Химия | Елапов Александр Александрович | лабораторные |
+            | Начертательная геометрия | Палий Наталья Викторовна | лектор |
+            | Начертательная геометрия | Михеенкова | семинары |
+            | Иностранный язык | **?** | семинарист |
+        """.trimIndent()
+        val t = Md.teachers(contacts)
+        assertEquals("Пинчук И.А.", Md.shortTeacher("Пинчук", t))
+        assertEquals("Елапов А.А.", Md.shortTeacher("Елапов А.А.", t))
+        assertEquals("Палий Н.В., Михеенкова", Md.shortTeacher("Палий, Михеенкова", t))
+        assertEquals("Коган", Md.shortTeacher("Коган", t))
+    }
+
+    @Test
+    fun answerSheetForClaude() {
+        val at = LocalDateTime.of(2026, 11, 1, 12, 0)
+        val asks = Plan.asks(data(), at)
+        assertEquals(listOf("Событие", "Событие", "Результат", "Вопрос"), asks.map { it.kind })
+        val text = Plan.forClaude(asks, at)
+        assertTrue(text.startsWith("Бауманка → Claude, 01.11.2026\n"))
+        assertTrue(text.contains("\n1. Событие · Информатика · ср, 28 окт, 17:35\nПрактикум №9 — сдать\nСейчас: готов 14.10\nКак прошло?\nОтвет:\n"))
+        assertTrue(text.contains("\n4. Вопрос · Админка\nСправка | за пропуск\n"))
+        assertEquals(4, Regex("Ответ:").findAll(text).count())
+    }
 }

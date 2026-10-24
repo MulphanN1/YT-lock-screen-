@@ -100,7 +100,7 @@ fun LessonRow(lesson: Lesson, state: RowState, progress: Float = 0f, compact: Bo
                 }
                 Column(Modifier.weight(1f)) {
                     Text(lesson.title, style = Type.bodyStrong, color = main, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    val meta = listOfNotNull(lesson.kind, if (compact) null else lesson.teacher, lesson.note).joinToString(" · ")
+                    val meta = listOfNotNull(lesson.kind, lesson.teacher, lesson.note).joinToString(" ⋅ ")
                     if (meta.isNotEmpty()) Text(meta, style = Type.small, color = second, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 if (lesson.room != null) {
