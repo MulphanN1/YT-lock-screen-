@@ -363,7 +363,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onResume() {
         super.onResume()
         // A start refused while the app was in the background is retried here.
-        if (PlayerBridge.info.playing && !PlaybackService.isRunning) PlaybackService.start(this)
+        if (PlayerBridge.info.playing && !PlaybackService.isShowing) PlaybackService.start(this)
     }
 
     override fun onStop() {
@@ -421,7 +421,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         nowPlayingText.isVisible = info.title != null
         nowPlayingText.text = info.title?.let { getString(R.string.now_playing, it) }
         // The player notification appears as soon as something plays, like in Spotify.
-        if (info.playing && !PlaybackService.isRunning) PlaybackService.start(this)
+        if (info.playing && !PlaybackService.isShowing) PlaybackService.start(this)
     }
 
     override fun onBackgroundModeChanged(enabled: Boolean) {
@@ -454,6 +454,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 artworkUrl = state.optString(3).ifBlank { null },
                 positionMs = state.optLong(4),
                 durationMs = state.optLong(5),
+                videoId = state.optString(6).ifBlank { null },
                 updatedAt = SystemClock.elapsedRealtime(),
             )
         }

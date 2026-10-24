@@ -50,7 +50,8 @@ object Scripts {
       artist,
       art,
       v ? Math.floor(v.currentTime * 1000) : 0,
-      v && isFinite(v.duration) ? Math.floor(v.duration * 1000) : 0
+      v && isFinite(v.duration) ? Math.floor(v.duration * 1000) : 0,
+      id || ''
     ];
   }
   window.__ytbgState = state;

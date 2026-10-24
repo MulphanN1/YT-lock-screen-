@@ -13,6 +13,7 @@ data class PlaybackInfo(
     val artworkUrl: String? = null,
     val positionMs: Long = 0,
     val durationMs: Long = 0,
+    val videoId: String? = null,
     /** [SystemClock.elapsedRealtime] when [positionMs] was measured. */
     val updatedAt: Long = 0,
 ) {
@@ -26,6 +27,7 @@ data class PlaybackInfo(
             title == other.title &&
             artist == other.artist &&
             artworkUrl == other.artworkUrl &&
+            videoId == other.videoId &&
             durationMs == other.durationMs &&
             kotlin.math.abs(other.expectedPosition(updatedAt) - positionMs) < POSITION_TOLERANCE_MS
 
@@ -62,6 +64,10 @@ object PlayerBridge {
     var lastPause: String? = null
         private set
 
+    /** True when the last pause did not come from any of our own commands. */
+    var lastPauseByPage = false
+        private set
+
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
 
@@ -89,6 +95,7 @@ object PlayerBridge {
             if (newInfo.sameTrackAndState(info)) return@post
             if (info.playing && !newInfo.playing) {
                 val recent = SystemClock.elapsedRealtime() - lastCommandAt < COMMAND_WINDOW_MS
+                lastPauseByPage = !recent
                 val source = if (recent) lastCommand else "сама страница YouTube"
                 lastPause = "$source, ${DateFormat.format("HH:mm:ss", System.currentTimeMillis())}"
             }

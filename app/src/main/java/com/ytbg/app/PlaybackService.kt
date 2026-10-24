@@ -5,7 +5,6 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -14,10 +13,12 @@ import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
+import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -25,33 +26,63 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.media.AudioAttributesCompat
+import androidx.media.AudioFocusRequestCompat
+import androidx.media.AudioManagerCompat
+import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.math.abs
 
 /**
- * Spotify-style media notification and lock-screen / control-panel player for whatever
- * the WebView is playing. As a foreground service it also keeps the process (and the
- * WebView inside MainActivity) alive while the screen is off.
+ * Spotify-style media player for whatever the WebView is playing: notification, lock
+ * screen and the system / control-panel media card. As a foreground service it also keeps
+ * the process (and the WebView inside MainActivity) alive while the screen is off.
+ *
+ * It is a [MediaBrowserServiceCompat] because that is how the system and launchers such as
+ * Huawei's control panel recognise music players.
  */
-class PlaybackService : Service(), PlayerBridge.Listener {
+class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
 
     private lateinit var session: MediaSessionCompat
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
 
     private val main = Handler(Looper.getMainLooper())
-    private val artworkLoader: ExecutorService = Executors.newSingleThreadExecutor()
-    private var artworkUrl: String? = null
+    private val loader: ExecutorService = Executors.newSingleThreadExecutor()
+
+    /** Cover of the current track; [artworkKey] is the video it belongs to. */
+    private var artworkKey: String? = null
     private var artwork: Bitmap? = null
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    /** Title and channel from YouTube's oEmbed API, per video id (main thread only). */
+    private val tracks = HashMap<String, Track>()
+    private var loadingTrack: String? = null
+
+    private lateinit var audioManager: AudioManager
+    private var hasFocus = false
+    private var focusRequestedAt = 0L
+    private var playStartedAt = 0L
+    private var wasPlaying = false
+    private var resumeOnFocusGain = false
+    private val focusRequest = AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(
+            AudioAttributesCompat.Builder()
+                .setUsage(AudioAttributesCompat.USAGE_MEDIA)
+                .setContentType(AudioAttributesCompat.CONTENT_TYPE_MUSIC)
+                .build(),
+        )
+        .setOnAudioFocusChangeListener { onAudioFocusChange(it) }
+        .build()
 
     override fun onCreate() {
         super.onCreate()
-        isRunning = true
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createChannel()
 
         session = MediaSessionCompat(this, "YtBg").apply {
@@ -84,6 +115,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             setPlaybackToLocal(AudioManager.STREAM_MUSIC)
             isActive = true
         }
+        sessionToken = session.sessionToken
 
         val power = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ytbg:playback").apply {
@@ -95,6 +127,15 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .apply { setReferenceCounted(false) }
 
         PlayerBridge.addListener(this)
+        render(PlayerBridge.info)
+    }
+
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot =
+        BrowserRoot(BROWSER_ROOT, null)
+
+    override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+        // Nothing to browse: the music lives in the app's YouTube page.
+        result.sendResult(mutableListOf())
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -109,7 +150,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             }
             ACTION_DISMISS -> {
                 // Swiped away: only possible while paused, so there is nothing to pause.
-                if (!PlayerBridge.info.playing) stopSelf()
+                if (!PlayerBridge.info.playing) hide()
                 return START_NOT_STICKY
             }
         }
@@ -125,27 +166,29 @@ class PlaybackService : Service(), PlayerBridge.Listener {
                 0
             },
         )
+        isShowing = true
         return START_NOT_STICKY
     }
 
     @SuppressLint("MissingPermission")
     override fun onPlaybackChanged(info: PlaybackInfo) {
         render(info)
-        if (NotificationManagerCompat.from(this).areNotificationsEnabled()) {
+        if (isShowing && NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(info))
         }
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // The app was swiped away: the WebView is gone, nothing left to play.
-        stopSelf()
+        hide()
     }
 
     override fun onDestroy() {
-        isRunning = false
+        isShowing = false
         PlayerBridge.removeListener(this)
         main.removeCallbacksAndMessages(null)
-        artworkLoader.shutdownNow()
+        loader.shutdownNow()
+        abandonAudioFocus()
         session.isActive = false
         session.release()
         wakeLock?.takeIf { it.isHeld }?.release()
@@ -156,13 +199,21 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     /** The "×" button: pause and hide the player. It comes back on the next play. */
     private fun close(source: String) {
         PlayerBridge.pause(source)
+        abandonAudioFocus()
+        hide()
+    }
+
+    private fun hide() {
+        isShowing = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun render(info: PlaybackInfo) {
         updateLocks(info.playing)
-        loadArtwork(info.artworkUrl)
+        updateAudioFocus(info)
+        loadTrack(info.videoId)
+        loadArtwork(info)
         session.setMetadata(metadata(info))
         session.setPlaybackState(
             PlaybackStateCompat.Builder()
@@ -189,8 +240,15 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         MediaMetadataCompat.Builder()
             .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title(info))
             .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist(info))
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title(info))
+            .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist(info))
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, info.durationMs)
-            .apply { artwork?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) } }
+            .apply {
+                artwork?.let {
+                    putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+                    putBitmap(MediaMetadataCompat.METADATA_KEY_DISPLAY_ICON, it)
+                }
+            }
             .build()
 
     private fun updateLocks(playing: Boolean) {
@@ -203,16 +261,113 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         }
     }
 
-    /** Downloads the cover once per track and redraws the player when it arrives. */
-    private fun loadArtwork(url: String?) {
-        if (url == artworkUrl) return
-        artworkUrl = url
-        artwork = null
-        if (url == null) return
-        artworkLoader.execute {
-            val bitmap = download(url) ?: return@execute
+    /**
+     * Holding audio focus marks this app as the current player for the system media card.
+     * Some WebView versions manage focus themselves; then taking it would pause the video,
+     * so on the first sign of that we give up on audio focus for good and resume playback.
+     */
+    private fun updateAudioFocus(info: PlaybackInfo) {
+        val now = SystemClock.elapsedRealtime()
+        if (info.playing && !wasPlaying) playStartedAt = now
+        if (!info.playing && wasPlaying && hasFocus && PlayerBridge.lastPauseByPage &&
+            now - focusRequestedAt < FOCUS_GUARD_MS
+        ) {
+            focusConflict = true
+            abandonAudioFocus()
+            PlayerBridge.controller?.play()
+        }
+        wasPlaying = info.playing
+        if (info.playing && !hasFocus && !focusConflict) {
+            focusRequestedAt = now
+            hasFocus = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest) ==
+                AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
+    }
+
+    private fun onAudioFocusChange(change: Int) {
+        when (change) {
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                hasFocus = true
+                if (resumeOnFocusGain) PlayerBridge.controller?.play()
+                resumeOnFocusGain = false
+            }
+            // A call or a voice assistant: pause and continue afterwards.
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                if (PlayerBridge.info.playing) {
+                    resumeOnFocusGain = true
+                    PlayerBridge.pause("звонок или голосовой помощник")
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                hasFocus = false
+                resumeOnFocusGain = false
+                val lostAt = SystemClock.elapsedRealtime()
+                main.postDelayed({
+                    if (abs(playStartedAt - lostAt) < FOCUS_GUARD_MS) {
+                        // Lost exactly when our own video started: that was the WebView.
+                        focusConflict = true
+                    } else if (PlayerBridge.info.playing) {
+                        PlayerBridge.pause("другое приложение начало играть")
+                    }
+                }, FOCUS_GUARD_MS)
+            }
+            // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK: the system lowers our volume by itself.
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasFocus) return
+        AudioManagerCompat.abandonAudioFocusRequest(audioManager, focusRequest)
+        hasFocus = false
+    }
+
+    /** Fetches the real title and channel once per video: the page title is just "YouTube". */
+    private fun loadTrack(videoId: String?) {
+        if (videoId == null || videoId in tracks || videoId == loadingTrack) return
+        loadingTrack = videoId
+        loader.execute {
+            val track = fetchTrack(videoId)
             main.post {
-                if (url != artworkUrl) return@post
+                if (loadingTrack == videoId) loadingTrack = null
+                tracks[videoId] = track
+                if (track.title != null) onPlaybackChanged(PlayerBridge.info)
+            }
+        }
+    }
+
+    private fun fetchTrack(videoId: String): Track = try {
+        val watchUrl = URLEncoder.encode("https://www.youtube.com/watch?v=$videoId", "UTF-8")
+        val connection = URL("https://www.youtube.com/oembed?format=json&url=$watchUrl").openConnection()
+            as HttpURLConnection
+        connection.connectTimeout = NETWORK_TIMEOUT_MS
+        connection.readTimeout = NETWORK_TIMEOUT_MS
+        val json = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        Track(
+            title = json.optString("title").ifBlank { null },
+            // Auto-generated music channels are called "Artist - Topic".
+            artist = json.optString("author_name").removeSuffix(" - Topic").ifBlank { null },
+        )
+    } catch (e: Exception) {
+        Track(null, null)
+    }
+
+    /** Downloads the cover once per video and redraws the player when it arrives. */
+    private fun loadArtwork(info: PlaybackInfo) {
+        val key = info.videoId ?: info.artworkUrl
+        if (key == artworkKey) return
+        artworkKey = key
+        artwork = null
+        if (key == null) return
+        val candidates = info.videoId?.let { id ->
+            listOf(
+                "https://i.ytimg.com/vi/$id/maxresdefault.jpg",
+                "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+            )
+        } ?: listOfNotNull(info.artworkUrl)
+        loader.execute {
+            val bitmap = candidates.firstNotNullOfOrNull(::download) ?: return@execute
+            main.post {
+                if (key != artworkKey) return@post
                 artwork = bitmap
                 onPlaybackChanged(PlayerBridge.info)
             }
@@ -221,18 +376,28 @@ class PlaybackService : Service(), PlayerBridge.Listener {
 
     private fun download(url: String): Bitmap? = try {
         val connection = URL(url).openConnection() as HttpURLConnection
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 10_000
-        connection.inputStream.use { BitmapFactory.decodeStream(it) }?.let(::cropLetterbox)
+        connection.connectTimeout = NETWORK_TIMEOUT_MS
+        connection.readTimeout = NETWORK_TIMEOUT_MS
+        connection.inputStream.use { BitmapFactory.decodeStream(it) }?.let { prepareArtwork(it) }
     } catch (e: Exception) {
         null
     }
 
-    /** YouTube's 4:3 thumbnails have black bars above and below a 16:9 picture. */
-    private fun cropLetterbox(bitmap: Bitmap): Bitmap {
-        if (bitmap.width * 3 != bitmap.height * 4) return bitmap
-        val height = bitmap.width * 9 / 16
-        return Bitmap.createBitmap(bitmap, 0, (bitmap.height - height) / 2, bitmap.width, height)
+    /**
+     * Removes the black bars of YouTube's 4:3 thumbnails and limits the size: the bitmap
+     * travels to the system with every notification and session update.
+     */
+    private fun prepareArtwork(bitmap: Bitmap): Bitmap {
+        var result = bitmap
+        if (result.width * 3 == result.height * 4) {
+            val height = result.width * 9 / 16
+            result = Bitmap.createBitmap(result, 0, (result.height - height) / 2, result.width, height)
+        }
+        if (result.width > MAX_ARTWORK_WIDTH) {
+            val height = result.height * MAX_ARTWORK_WIDTH / result.width
+            result = Bitmap.createScaledBitmap(result, MAX_ARTWORK_WIDTH, height, true)
+        }
+        return result
     }
 
     private fun buildNotification(info: PlaybackInfo): Notification {
@@ -251,6 +416,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_music)
+            .setColor(ContextCompat.getColor(this, R.color.power_on))
             .setLargeIcon(artwork)
             .setContentTitle(title(info))
             .setContentText(artist(info))
@@ -258,7 +424,9 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .setDeleteIntent(serviceIntent(ACTION_DISMISS))
             .setOngoing(info.playing)
             .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setShowWhen(false)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
@@ -274,9 +442,13 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .build()
     }
 
-    private fun title(info: PlaybackInfo): String = info.title ?: getString(R.string.notif_title_default)
+    private fun title(info: PlaybackInfo): String =
+        info.videoId?.let { tracks[it]?.title }
+            ?: info.title?.takeUnless { it == "YouTube" }
+            ?: getString(R.string.notif_title_default)
 
-    private fun artist(info: PlaybackInfo): String = info.artist ?: "YouTube"
+    private fun artist(info: PlaybackInfo): String =
+        info.videoId?.let { tracks[it]?.artist } ?: info.artist ?: "YouTube"
 
     private fun serviceIntent(action: String): PendingIntent =
         PendingIntent.getService(
@@ -296,21 +468,33 @@ class PlaybackService : Service(), PlayerBridge.Listener {
 
     private fun createChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
+        // The old channel was "low importance", which Huawei folds into a collapsed group.
+        manager.deleteNotificationChannel(OLD_CHANNEL_ID)
         val channel = NotificationChannel(
             CHANNEL_ID,
             getString(R.string.channel_name),
-            NotificationManager.IMPORTANCE_LOW,
+            NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
+            setSound(null, null)
+            enableVibration(false)
             setShowBadge(false)
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
-        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        manager.createNotificationChannel(channel)
     }
 
+    private data class Track(val title: String?, val artist: String?)
+
     companion object {
-        private const val CHANNEL_ID = "playback"
+        private const val OLD_CHANNEL_ID = "playback"
+        private const val CHANNEL_ID = "player"
         private const val NOTIFICATION_ID = 1
+        private const val BROWSER_ROOT = "root"
         private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L
+        private const val FOCUS_GUARD_MS = 2000L
+        private const val NETWORK_TIMEOUT_MS = 10_000
+        private const val MAX_ARTWORK_WIDTH = 640
 
         private const val ACTION_SHOW = "com.ytbg.app.SHOW"
         private const val ACTION_PLAY = "com.ytbg.app.PLAY"
@@ -320,8 +504,12 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         private const val ACTION_CLOSE = "com.ytbg.app.CLOSE"
         private const val ACTION_DISMISS = "com.ytbg.app.DISMISS"
 
-        var isRunning = false
+        /** True while the player notification is up (the service may also run just bound). */
+        var isShowing = false
             private set
+
+        /** Set once the WebView turns out to manage audio focus itself; lasts for the process. */
+        private var focusConflict = false
 
         /** Shows the player. Only allowed while the app is in the foreground. */
         fun start(context: Context) {
