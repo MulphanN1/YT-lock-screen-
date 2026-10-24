@@ -6,25 +6,34 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.app.StatusBarManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -36,6 +45,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
+import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 
@@ -52,6 +64,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private var enabled = false
     private var started = false
     private var injectOnPageLoad = true
+    private var pageScript: ScriptHandler? = null
+
+    // Read from the WebView network thread in shouldInterceptRequest.
+    @Volatile
+    private var adBlock = true
     private var colorAnimator: ValueAnimator? = null
     private var ringAnimator: ObjectAnimator? = null
 
@@ -60,6 +77,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private val overlayPermission =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            if (BlackScreen.canShow(this)) showBlackScreenDialog()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -85,7 +107,9 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             insets
         }
 
+        adBlock = Prefs.isAdBlockEnabled(this)
         setupWebView()
+        setupChips()
         powerButton.setOnClickListener { toggle() }
 
         PlayerBridge.controller = this
@@ -106,6 +130,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(urlFromIntent(intent) ?: HOME_URL)
         }
+        if (intent.getBooleanExtra(EXTRA_BLACK_SCREEN, false)) showBlackScreenDialog()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -126,22 +151,22 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.addJavascriptInterface(JsBridge(), "YTBG")
 
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-            WebViewCompat.addDocumentStartJavaScript(webView, Scripts.PAGE, setOf("*"))
-            injectOnPageLoad = false
-        }
+        installPageScript()
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
                 handleExternalUrl(request.url)
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                if (injectOnPageLoad) view.evaluateJavascript(Scripts.PAGE, null)
+                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock), null)
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                if (injectOnPageLoad) view.evaluateJavascript(Scripts.PAGE, null)
+                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock), null)
             }
+
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+                if (adBlock && AdBlock.isAd(request.url)) AdBlock.emptyResponse() else null
         }
 
         webView.webChromeClient = chromeClient
@@ -177,6 +202,93 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         }
     }
 
+    private fun installPageScript() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        pageScript?.remove()
+        pageScript = WebViewCompat.addDocumentStartJavaScript(webView, Scripts.page(adBlock), setOf("*"))
+        injectOnPageLoad = false
+    }
+
+    private fun setupChips() {
+        findViewById<Chip>(R.id.chipBlack).setOnClickListener { showBlackScreenDialog() }
+        findViewById<Chip>(R.id.chipTiles).setOnClickListener { addTiles() }
+        findViewById<Chip>(R.id.chipAdBlock).apply {
+            isChecked = adBlock
+            setOnCheckedChangeListener { _, checked ->
+                adBlock = checked
+                Prefs.setAdBlockEnabled(this@MainActivity, checked)
+                installPageScript()
+                webView.reload()
+                Toast.makeText(
+                    this@MainActivity,
+                    if (checked) R.string.ad_block_on else R.string.ad_block_off,
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+        }
+    }
+
+    private fun showBlackScreenDialog() {
+        val allowed = BlackScreen.canShow(this)
+        val message = getString(R.string.black_dialog_text) +
+            if (allowed) "" else getString(R.string.black_dialog_no_permission)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.black_dialog_title)
+            .setMessage(message)
+            .setNegativeButton(R.string.close, null)
+        if (allowed) {
+            dialog.setPositiveButton(R.string.black_open_youtube) { _, _ -> openYouTubeAndDarken() }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                dialog.setNeutralButton(R.string.black_add_tile) { _, _ ->
+                    requestTile(BlackScreenTileService::class.java, R.string.tile_black, R.drawable.ic_dark) {}
+                }
+            }
+        } else {
+            dialog.setPositiveButton(R.string.black_allow) { _, _ ->
+                overlayPermission.launch(
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
+                )
+            }
+        }
+        dialog.show()
+    }
+
+    private fun openYouTubeAndDarken() {
+        val launch = packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE)
+        if (launch == null) {
+            Toast.makeText(this, R.string.youtube_not_installed, Toast.LENGTH_LONG).show()
+            return
+        }
+        startActivity(launch)
+        Toast.makeText(this, R.string.black_countdown, Toast.LENGTH_LONG).show()
+        val app = applicationContext
+        Handler(Looper.getMainLooper()).postDelayed({ BlackScreen.show(app) }, DARKEN_DELAY_MS)
+    }
+
+    private fun addTiles() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestTile(BackgroundTileService::class.java, R.string.tile_background, R.drawable.ic_power) {
+                requestTile(BlackScreenTileService::class.java, R.string.tile_black, R.drawable.ic_dark) {}
+            }
+        } else {
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.tiles_dialog_title)
+                .setMessage(R.string.tiles_dialog_text)
+                .setPositiveButton(android.R.string.ok, null)
+                .show()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun requestTile(service: Class<*>, label: Int, icon: Int, then: () -> Unit) {
+        getSystemService(StatusBarManager::class.java).requestAddTileService(
+            ComponentName(this, service),
+            getString(label),
+            Icon.createWithResource(this, icon),
+            mainExecutor,
+        ) { then() }
+    }
+
     private fun systemBars(): WindowInsetsControllerCompat =
         WindowCompat.getInsetsController(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -202,6 +314,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         urlFromIntent(intent)?.let { webView.loadUrl(it) }
+        if (intent.getBooleanExtra(EXTRA_BLACK_SCREEN, false)) showBlackScreenDialog()
     }
 
     private fun urlFromIntent(intent: Intent?): String? = when (intent?.action) {
@@ -221,6 +334,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         } else {
             PlaybackService.stop(this)
         }
+        Tiles.refresh(this)
         powerButton.animate().scaleX(0.9f).scaleY(0.9f).setDuration(90).withEndAction {
             powerButton.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
         }.start()
@@ -320,6 +434,14 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         webView.evaluateJavascript(Scripts.PAUSE, null)
     }
 
+    override fun next() {
+        webView.evaluateJavascript(Scripts.NEXT, null)
+    }
+
+    override fun previous() {
+        webView.evaluateJavascript(Scripts.PREVIOUS, null)
+    }
+
     // PlayerBridge.Listener
 
     override fun onPlaybackChanged(playing: Boolean, title: String?) {
@@ -339,10 +461,14 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         }
     }
 
-    private companion object {
-        const val HOME_URL = "https://m.youtube.com/"
+    companion object {
+        const val EXTRA_BLACK_SCREEN = "black_screen"
 
-        val INTERNAL_HOSTS = listOf(
+        private const val HOME_URL = "https://m.youtube.com/"
+        private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
+        private const val DARKEN_DELAY_MS = 10_000L
+
+        private val INTERNAL_HOSTS = listOf(
             "youtube.com",
             "youtu.be",
             "youtube-nocookie.com",

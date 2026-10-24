@@ -12,4 +12,30 @@
     <string name="action_play">Играть</string>
     <string name="action_pause">Пауза</string>
     <string name="action_stop">Выключить</string>
+    <string name="action_next">Следующий</string>
+    <string name="action_previous">Предыдущий</string>
+
+    <string name="tile_background">YT Фон</string>
+    <string name="tile_black">Чёрный экран</string>
+    <string name="chip_black">Чёрный экран для YouTube</string>
+    <string name="chip_tiles">Плитки в шторку</string>
+    <string name="chip_ad_block">Без рекламы</string>
+
+    <string name="black_hint">Экран «выключен», музыка играет.\nУдерживайте палец 2 секунды, чтобы выйти</string>
+    <string name="black_channel_name">Чёрный экран</string>
+    <string name="black_notif_title">Чёрный экран включён</string>
+    <string name="black_notif_text">YouTube играет, экран только выглядит выключенным</string>
+    <string name="black_dialog_title">Чёрный экран для приложения YouTube</string>
+    <string name="black_dialog_text">Работает с настоящим приложением YouTube: поверх него появляется чёрный экран, касания блокируются, а YouTube думает, что экран включён, и продолжает играть.\n\n1. Включите видео в приложении YouTube.\n2. Опустите шторку и нажмите плитку «Чёрный экран», затем закройте шторку.\n3. Чтобы выйти, удерживайте палец на экране 2 секунды или нажмите «Выключить» в уведомлении.\n\nНе нажимайте кнопку питания: при настоящем выключении экрана YouTube встанет на паузу.</string>
+    <string name="black_dialog_no_permission">\n\nСначала разрешите приложению показываться поверх других окон.</string>
+    <string name="black_allow">Разрешить</string>
+    <string name="black_open_youtube">Открыть YouTube и затемнить через 10 с</string>
+    <string name="black_add_tile">Добавить плитку</string>
+    <string name="black_countdown">Экран станет чёрным через 10 секунд</string>
+    <string name="youtube_not_installed">Приложение YouTube не установлено</string>
+    <string name="tiles_dialog_title">Плитки в шторке</string>
+    <string name="tiles_dialog_text">Опустите шторку полностью, нажмите карандаш («Изменить») и перетащите плитки «YT Фон» и «Чёрный экран» в быстрые настройки.</string>
+    <string name="ad_block_on">Реклама блокируется</string>
+    <string name="ad_block_off">Блокировка рекламы выключена</string>
+    <string name="close">Закрыть</string>
 </resources>

@@ -48,6 +48,14 @@ class PlaybackService : Service(), PlayerBridge.Listener {
                     PlayerBridge.controller?.pause()
                 }
 
+                override fun onSkipToNext() {
+                    PlayerBridge.controller?.next()
+                }
+
+                override fun onSkipToPrevious() {
+                    PlayerBridge.controller?.previous()
+                }
+
                 override fun onStop() {
                     turnOff()
                 }
@@ -64,6 +72,8 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         when (intent?.action) {
             ACTION_PLAY -> PlayerBridge.controller?.play()
             ACTION_PAUSE -> PlayerBridge.controller?.pause()
+            ACTION_NEXT -> PlayerBridge.controller?.next()
+            ACTION_PREVIOUS -> PlayerBridge.controller?.previous()
             ACTION_STOP -> {
                 turnOff()
                 return START_NOT_STICKY
@@ -110,6 +120,7 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     private fun turnOff() {
         Prefs.setEnabled(this, false)
         PlayerBridge.reportBackgroundMode(false)
+        Tiles.refresh(this)
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -142,6 +153,8 @@ class PlaybackService : Service(), PlayerBridge.Listener {
                     PlaybackStateCompat.ACTION_PLAY or
                         PlaybackStateCompat.ACTION_PAUSE or
                         PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                         PlaybackStateCompat.ACTION_STOP,
                 )
                 .setState(
@@ -160,6 +173,12 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         } else {
             NotificationCompat.Action(R.drawable.ic_play, getString(R.string.action_play), serviceIntent(ACTION_PLAY))
         }
+        val previous = NotificationCompat.Action(
+            R.drawable.ic_skip_previous,
+            getString(R.string.action_previous),
+            serviceIntent(ACTION_PREVIOUS),
+        )
+        val next = NotificationCompat.Action(R.drawable.ic_skip_next, getString(R.string.action_next), serviceIntent(ACTION_NEXT))
         val stop = NotificationCompat.Action(R.drawable.ic_close, getString(R.string.action_stop), serviceIntent(ACTION_STOP))
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
@@ -173,12 +192,14 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .addAction(previous)
             .addAction(playPause)
+            .addAction(next)
             .addAction(stop)
             .setStyle(
                 MediaStyle()
                     .setMediaSession(session.sessionToken)
-                    .setShowActionsInCompactView(0, 1),
+                    .setShowActionsInCompactView(0, 1, 2),
             )
             .build()
     }
@@ -219,6 +240,8 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         private const val ACTION_START = "com.ytbg.app.START"
         private const val ACTION_PLAY = "com.ytbg.app.PLAY"
         private const val ACTION_PAUSE = "com.ytbg.app.PAUSE"
+        private const val ACTION_NEXT = "com.ytbg.app.NEXT"
+        private const val ACTION_PREVIOUS = "com.ytbg.app.PREVIOUS"
         private const val ACTION_STOP = "com.ytbg.app.STOP"
 
         fun start(context: Context) {

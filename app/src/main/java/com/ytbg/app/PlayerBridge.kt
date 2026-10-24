@@ -12,6 +12,8 @@ object PlayerBridge {
     interface Controller {
         fun play()
         fun pause()
+        fun next()
+        fun previous()
     }
 
     interface Listener {
