@@ -56,8 +56,12 @@ fun SectionLabel(text: String, trailing: String? = null, trailingColor: Color? =
     Column(Modifier.padding(start = Gutter, end = Gutter, top = top)) {
         Hairline(color = p.ink)
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(text.uppercase(), style = Type.label, color = p.ink, modifier = Modifier.weight(1f))
-            if (trailing != null) Text(trailing, style = Type.small, color = trailingColor ?: p.ink2)
+            // Заголовок не сжимается: длинная подпись справа переносится сама, а не выдавливает его в ноль.
+            Text(text.uppercase(), style = Type.label, color = p.ink, maxLines = 1, softWrap = false)
+            Text(
+                trailing.orEmpty(), style = Type.small, color = trailingColor ?: p.ink2, textAlign = TextAlign.End,
+                modifier = Modifier.weight(1f).padding(start = 12.dp),
+            )
         }
     }
 }

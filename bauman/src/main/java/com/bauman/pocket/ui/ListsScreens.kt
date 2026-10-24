@@ -95,10 +95,10 @@ private fun ClaudeBlock(asks: List<Plan.Ask>, at: LocalDateTime) {
     val counts = asks.groupingBy { it.kind }.eachCount().entries.joinToString(" · ") { "${it.key.lowercase()} ${it.value}" }
     fun text() = Plan.forClaude(asks, at)
     Column {
-        SectionLabel("Ответить Claude", counts)
+        SectionLabel("Ответить Claude", asks.size.toString())
+        Text(counts, style = Type.smallStrong, color = p.ink, modifier = Modifier.padding(start = Gutter, end = Gutter, top = 6.dp))
         Text(
-            "Соберу всё, о чём Claude ждёт ответа, в формате «вопрос — ответ». Впиши ответы и отправь " +
-                "в чат с Claude: он обновит сроки и баллы, а сюда они придут при обновлении.",
+            "Впиши ответы и отправь в чат с Claude: он обновит сроки и баллы, а сюда они придут при обновлении.",
             style = Type.small, color = p.ink2, modifier = Modifier.padding(horizontal = Gutter, vertical = 6.dp),
         )
         Row(Modifier.padding(horizontal = Gutter, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
