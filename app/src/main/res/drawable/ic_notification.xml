@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Red circle with the power symbol cut out. Huawei draws notification icons untinted on a
+     white tile, so a white icon was invisible there; stock Android uses it as a silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FF0033"
+        android:fillType="evenOdd"
+        android:pathData="M12,1a11,11 0,1 1,0 22a11,11 0,1 1,0 -22zM12.9,5.2h-1.8v7.6h1.8zM15.8,6.9l-1.15,1.15C15.85,8.95 16.6,10.4 16.6,12c0,2.54 -2.06,4.6 -4.6,4.6s-4.6,-2.06 -4.6,-4.6c0,-1.6 0.75,-3.05 1.95,-3.95L8.2,6.9C6.55,8.1 5.6,10 5.6,12c0,3.53 2.87,6.4 6.4,6.4s6.4,-2.87 6.4,-6.4c0,-2 -0.95,-3.9 -2.6,-5.1z" />
+</vector>

@@ -31,6 +31,7 @@ import androidx.media.AudioFocusRequestCompat
 import androidx.media.AudioManagerCompat
 import androidx.media.MediaBrowserServiceCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+import androidx.media.session.MediaButtonReceiver
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -112,6 +113,12 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
                 }
             })
             setSessionActivity(openAppIntent())
+            setMediaButtonReceiver(
+                MediaButtonReceiver.buildMediaButtonPendingIntent(
+                    this@PlaybackService,
+                    PlaybackStateCompat.ACTION_PLAY_PAUSE,
+                ),
+            )
             setPlaybackToLocal(AudioManager.STREAM_MUSIC)
             isActive = true
         }
@@ -140,6 +147,8 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            // Headset / watch / control-panel buttons, routed to the session callback above.
+            Intent.ACTION_MEDIA_BUTTON -> MediaButtonReceiver.handleIntent(session, intent)
             ACTION_PLAY -> PlayerBridge.controller?.play()
             ACTION_PAUSE -> PlayerBridge.pause("кнопка в уведомлении")
             ACTION_NEXT -> PlayerBridge.controller?.next()
@@ -167,6 +176,8 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             },
         )
         isShowing = true
+        // A media button can start the service after the app was closed: nothing to play then.
+        if (PlayerBridge.controller == null) hide()
         return START_NOT_STICKY
     }
 
@@ -273,6 +284,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             now - focusRequestedAt < FOCUS_GUARD_MS
         ) {
             focusConflict = true
+            audioStatus = "отключено: встроенный плеер сам управляет звуком"
             abandonAudioFocus()
             PlayerBridge.controller?.play()
         }
@@ -281,6 +293,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             focusRequestedAt = now
             hasFocus = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest) ==
                 AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            audioStatus = if (hasFocus) "занят приложением" else "система отказала"
         }
     }
 
@@ -288,6 +301,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         when (change) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 hasFocus = true
+                audioStatus = "занят приложением"
                 if (resumeOnFocusGain) PlayerBridge.controller?.play()
                 resumeOnFocusGain = false
             }
@@ -300,12 +314,14 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasFocus = false
+                audioStatus = "забрало другое приложение"
                 resumeOnFocusGain = false
                 val lostAt = SystemClock.elapsedRealtime()
                 main.postDelayed({
                     if (abs(playStartedAt - lostAt) < FOCUS_GUARD_MS) {
                         // Lost exactly when our own video started: that was the WebView.
                         focusConflict = true
+                        audioStatus = "отключено: встроенный плеер сам управляет звуком"
                     } else if (PlayerBridge.info.playing) {
                         PlayerBridge.pause("другое приложение начало играть")
                     }
@@ -415,7 +431,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         val close = NotificationCompat.Action(R.drawable.ic_close, getString(R.string.action_close), serviceIntent(ACTION_CLOSE))
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_music)
+            .setSmallIcon(R.drawable.ic_notification)
             .setColor(ContextCompat.getColor(this, R.color.power_on))
             .setLargeIcon(artwork)
             .setContentTitle(title(info))
@@ -506,6 +522,10 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
 
         /** True while the player notification is up (the service may also run just bound). */
         var isShowing = false
+            private set
+
+        /** Audio focus state in words, for the diagnostics on a long press of the power button. */
+        var audioStatus = "ещё не запрашивался"
             private set
 
         /** Set once the WebView turns out to manage audio focus itself; lasts for the process. */

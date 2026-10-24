@@ -119,8 +119,9 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         setupChips()
         powerButton.setOnClickListener { toggle() }
         powerButton.setOnLongClickListener {
-            val message = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
+            val pause = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
                 ?: getString(R.string.no_pauses)
+            val message = pause + "\n" + getString(R.string.audio_status, PlaybackService.audioStatus)
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             true
         }
