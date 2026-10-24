@@ -8,8 +8,15 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Shader
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -22,6 +29,7 @@ import android.support.v4.media.MediaBrowserCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
@@ -60,6 +68,10 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
     /** Cover of the current track; [artworkKey] is the video it belongs to. */
     private var artworkKey: String? = null
     private var artwork: Bitmap? = null
+
+    /** Smaller, rounded copies of [artwork] for the Huawei notification layouts. */
+    private var artworkSmall: Bitmap? = null
+    private var artworkBig: Bitmap? = null
 
     /** Title and channel from YouTube's oEmbed API, per video id (main thread only). */
     private val tracks = HashMap<String, Track>()
@@ -373,6 +385,8 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         if (key == artworkKey) return
         artworkKey = key
         artwork = null
+        artworkSmall = null
+        artworkBig = null
         if (key == null) return
         val candidates = info.videoId?.let { id ->
             listOf(
@@ -385,6 +399,10 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             main.post {
                 if (key != artworkKey) return@post
                 artwork = bitmap
+                if (usePlayerLayout) {
+                    artworkSmall = rounded(bitmap, SMALL_ARTWORK_WIDTH, 0.08f)
+                    artworkBig = rounded(bitmap, BIG_ARTWORK_WIDTH, 0.04f)
+                }
                 onPlaybackChanged(PlayerBridge.info)
             }
         }
@@ -416,7 +434,74 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         return result
     }
 
-    private fun buildNotification(info: PlaybackInfo): Notification {
+    /** Scaled copy of [source] with rounded corners; [radius] is a fraction of the width. */
+    private fun rounded(source: Bitmap, width: Int, radius: Float): Bitmap {
+        val height = source.height * width / source.width
+        val scaled = Bitmap.createScaledBitmap(source, width, height, true)
+        val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        }
+        val r = width * radius
+        Canvas(result).drawRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), r, r, paint)
+        return result
+    }
+
+    private fun buildNotification(info: PlaybackInfo): Notification =
+        if (usePlayerLayout) buildPlayerLayoutNotification(info) else buildMediaStyleNotification(info)
+
+    /**
+     * Huawei/Honor show a MediaStyle notification as a plain one whose buttons appear only
+     * after expanding it, so there the player is drawn with our own layouts instead.
+     */
+    private fun buildPlayerLayoutNotification(info: PlaybackInfo): Notification =
+        NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setColor(ContextCompat.getColor(this, R.color.power_on))
+            .setContentTitle(title(info))
+            .setContentText(artist(info))
+            .setCustomContentView(playerViews(R.layout.notification_player, info, artworkSmall))
+            .setCustomBigContentView(playerViews(R.layout.notification_player_big, info, artworkBig))
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setContentIntent(openAppIntent())
+            .setDeleteIntent(serviceIntent(ACTION_DISMISS))
+            .setOngoing(info.playing)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .build()
+
+    private fun playerViews(layout: Int, info: PlaybackInfo, art: Bitmap?): RemoteViews =
+        RemoteViews(packageName, layout).apply {
+            setTextViewText(R.id.title, title(info))
+            setTextViewText(R.id.artist, artist(info))
+            if (art != null) setImageViewBitmap(R.id.art, art) else setImageViewResource(R.id.art, R.mipmap.ic_launcher)
+
+            setImageViewResource(R.id.playPause, if (info.playing) R.drawable.ic_pause else R.drawable.ic_play)
+            setContentDescription(
+                R.id.playPause,
+                getString(if (info.playing) R.string.action_pause else R.string.action_play),
+            )
+            setOnClickPendingIntent(R.id.playPause, serviceIntent(if (info.playing) ACTION_PAUSE else ACTION_PLAY))
+            setOnClickPendingIntent(R.id.previous, serviceIntent(ACTION_PREVIOUS))
+            setOnClickPendingIntent(R.id.next, serviceIntent(ACTION_NEXT))
+            if (layout == R.layout.notification_player_big) {
+                setOnClickPendingIntent(R.id.close, serviceIntent(ACTION_CLOSE))
+            }
+
+            // The button icons are white; recolour them to match the notification background.
+            val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+                Configuration.UI_MODE_NIGHT_YES
+            val tint = if (night) Color.WHITE else BUTTON_COLOR_LIGHT
+            val buttons = listOf(R.id.previous, R.id.playPause, R.id.next)
+            val all = if (layout == R.layout.notification_player_big) buttons + R.id.close else buttons
+            for (id in all) setInt(id, "setColorFilter", tint)
+        }
+
+    private fun buildMediaStyleNotification(info: PlaybackInfo): Notification {
         val playPause = if (info.playing) {
             NotificationCompat.Action(R.drawable.ic_pause, getString(R.string.action_pause), serviceIntent(ACTION_PAUSE))
         } else {
@@ -510,7 +595,13 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L
         private const val FOCUS_GUARD_MS = 2000L
         private const val NETWORK_TIMEOUT_MS = 10_000
-        private const val MAX_ARTWORK_WIDTH = 640
+        private const val MAX_ARTWORK_WIDTH = 480
+        private const val SMALL_ARTWORK_WIDTH = 192
+        private const val BIG_ARTWORK_WIDTH = 400
+        private const val BUTTON_COLOR_LIGHT = 0xFF1F1F1F.toInt()
+
+        /** Huawei and Honor need the custom player layouts, see [buildPlayerLayoutNotification]. */
+        private val usePlayerLayout = Build.MANUFACTURER.lowercase() in setOf("huawei", "honor")
 
         private const val ACTION_SHOW = "com.ytbg.app.SHOW"
         private const val ACTION_PLAY = "com.ytbg.app.PLAY"

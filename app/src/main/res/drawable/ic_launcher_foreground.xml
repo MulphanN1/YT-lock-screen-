@@ -4,6 +4,10 @@
     android:height="108dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- Full-bleed red here too: Huawei themes draw only the foreground layer on a white plate. -->
+    <path
+        android:fillColor="@color/ic_launcher_bg"
+        android:pathData="M0,0h24v24h-24z" />
     <group
         android:pivotX="12"
         android:pivotY="12"
