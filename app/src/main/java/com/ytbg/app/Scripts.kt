@@ -34,17 +34,34 @@ object Scripts {
   });
   ['blur', 'pagehide'].forEach(function (n) { window.addEventListener(n, stop, true); });
 
+  // Prefer the page's own Media Session data: it has the channel name and artwork.
+  function state() {
+    var v = document.querySelector('video');
+    var md = navigator.mediaSession && navigator.mediaSession.metadata;
+    var id = new URLSearchParams(location.search).get('v');
+    var title = (md && md.title) || (document.title || '').replace(/\s*-\s*YouTube( Music)?$/, '');
+    var artist = (md && md.artist) || '';
+    var art = '';
+    if (md && md.artwork && md.artwork.length) art = md.artwork[md.artwork.length - 1].src;
+    if (!/^https?:/.test(art)) art = id ? 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg' : '';
+    return [
+      !!(v && !v.paused && !v.ended),
+      title,
+      artist,
+      art,
+      v ? Math.floor(v.currentTime * 1000) : 0,
+      v && isFinite(v.duration) ? Math.floor(v.duration * 1000) : 0
+    ];
+  }
   function report() {
     try {
-      var v = document.querySelector('video');
-      var playing = !!(v && !v.paused && !v.ended);
-      var title = (document.title || '').replace(/\s*-\s*YouTube( Music)?$/, '');
-      if (window.YTBG) window.YTBG.onState(playing, title);
+      if (window.YTBG && document.querySelector('video')) window.YTBG.onState(JSON.stringify(state()));
     } catch (e) {}
   }
-  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata'].forEach(function (n) {
-    document.addEventListener(n, report, true);
-  });
+  ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
+    .forEach(function (n) { document.addEventListener(n, report, true); });
+  // Catches title/artwork that arrive late and anything the events miss.
+  setInterval(report, 2000);
 })();
 """
 
@@ -145,4 +162,7 @@ object Scripts {
     const val PLAY = "(function(){var v=document.querySelector('video');if(v)v.play();})();"
 
     const val PAUSE = "(function(){var v=document.querySelector('video');if(v)v.pause();})();"
+
+    fun seekTo(positionMs: Long): String =
+        "(function(){var v=document.querySelector('video');if(v)v.currentTime=${positionMs / 1000.0};})();"
 }

@@ -17,9 +17,7 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
+import android.os.SystemClock
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -47,6 +45,8 @@ import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import org.json.JSONArray
+import org.json.JSONException
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -77,11 +77,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
-    private val overlayPermission =
-        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-            if (BlackScreen.canShow(this)) showBlackScreenDialog()
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -115,7 +110,9 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         PlayerBridge.controller = this
         PlayerBridge.addListener(this)
         applyBackgroundMode(Prefs.isEnabled(this), animate = false)
-        onPlaybackChanged(PlayerBridge.isPlaying, PlayerBridge.title)
+        onPlaybackChanged(PlayerBridge.info)
+        // Needed for the player notification on Android 13+.
+        requestNotificationPermission()
 
         onBackPressedDispatcher.addCallback(this) {
             when {
@@ -130,7 +127,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(urlFromIntent(intent) ?: HOME_URL)
         }
-        if (intent.getBooleanExtra(EXTRA_BLACK_SCREEN, false)) showBlackScreenDialog()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -210,7 +206,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     }
 
     private fun setupChips() {
-        findViewById<Chip>(R.id.chipBlack).setOnClickListener { showBlackScreenDialog() }
         findViewById<Chip>(R.id.chipTiles).setOnClickListener { addTiles() }
         findViewById<Chip>(R.id.chipAdBlock).apply {
             isChecked = adBlock
@@ -228,48 +223,9 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         }
     }
 
-    private fun showBlackScreenDialog() {
-        val allowed = BlackScreen.canShow(this)
-        val message = getString(R.string.black_dialog_text) +
-            if (allowed) "" else getString(R.string.black_dialog_no_permission)
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.black_dialog_title)
-            .setMessage(message)
-            .setNegativeButton(R.string.close, null)
-        if (allowed) {
-            dialog.setPositiveButton(R.string.black_open_youtube) { _, _ -> openYouTubeAndDarken() }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                dialog.setNeutralButton(R.string.black_add_tile) { _, _ ->
-                    requestTile(BlackScreenTileService::class.java, R.string.tile_black, R.drawable.ic_dark) {}
-                }
-            }
-        } else {
-            dialog.setPositiveButton(R.string.black_allow) { _, _ ->
-                overlayPermission.launch(
-                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
-                )
-            }
-        }
-        dialog.show()
-    }
-
-    private fun openYouTubeAndDarken() {
-        val launch = packageManager.getLaunchIntentForPackage(YOUTUBE_PACKAGE)
-        if (launch == null) {
-            Toast.makeText(this, R.string.youtube_not_installed, Toast.LENGTH_LONG).show()
-            return
-        }
-        startActivity(launch)
-        Toast.makeText(this, R.string.black_countdown, Toast.LENGTH_LONG).show()
-        val app = applicationContext
-        Handler(Looper.getMainLooper()).postDelayed({ BlackScreen.show(app) }, DARKEN_DELAY_MS)
-    }
-
     private fun addTiles() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestTile(BackgroundTileService::class.java, R.string.tile_background, R.drawable.ic_power) {
-                requestTile(BlackScreenTileService::class.java, R.string.tile_black, R.drawable.ic_dark) {}
-            }
+            requestTile(BackgroundTileService::class.java, R.string.tile_background, R.drawable.ic_power)
         } else {
             MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.tiles_dialog_title)
@@ -280,13 +236,13 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun requestTile(service: Class<*>, label: Int, icon: Int, then: () -> Unit) {
+    private fun requestTile(service: Class<*>, label: Int, icon: Int) {
         getSystemService(StatusBarManager::class.java).requestAddTileService(
             ComponentName(this, service),
             getString(label),
             Icon.createWithResource(this, icon),
             mainExecutor,
-        ) { then() }
+        ) { }
     }
 
     private fun systemBars(): WindowInsetsControllerCompat =
@@ -314,7 +270,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         urlFromIntent(intent)?.let { webView.loadUrl(it) }
-        if (intent.getBooleanExtra(EXTRA_BLACK_SCREEN, false)) showBlackScreenDialog()
     }
 
     private fun urlFromIntent(intent: Intent?): String? = when (intent?.action) {
@@ -328,12 +283,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         val newState = !enabled
         Prefs.setEnabled(this, newState)
         applyBackgroundMode(newState, animate = true)
-        if (newState) {
-            requestNotificationPermission()
-            PlaybackService.start(this)
-        } else {
-            PlaybackService.stop(this)
-        }
         Tiles.refresh(this)
         powerButton.animate().scaleX(0.9f).scaleY(0.9f).setDuration(90).withEndAction {
             powerButton.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
@@ -393,9 +342,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     override fun onResume() {
         super.onResume()
-        // Started here rather than in onCreate: a foreground service may only be
-        // started while the activity is visible.
-        if (enabled) PlaybackService.start(this)
+        // A start refused while the app was in the background is retried here.
+        if (PlayerBridge.info.playing && !PlaybackService.isRunning) PlaybackService.start(this)
     }
 
     override fun onStop() {
@@ -444,9 +392,15 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     // PlayerBridge.Listener
 
-    override fun onPlaybackChanged(playing: Boolean, title: String?) {
-        nowPlayingText.isVisible = title != null
-        nowPlayingText.text = title?.let { getString(R.string.now_playing, it) }
+    override fun seekTo(positionMs: Long) {
+        webView.evaluateJavascript(Scripts.seekTo(positionMs), null)
+    }
+
+    override fun onPlaybackChanged(info: PlaybackInfo) {
+        nowPlayingText.isVisible = info.title != null
+        nowPlayingText.text = info.title?.let { getString(R.string.now_playing, it) }
+        // The player notification appears as soon as something plays, like in Spotify.
+        if (info.playing && !PlaybackService.isRunning) PlaybackService.start(this)
     }
 
     override fun onBackgroundModeChanged(enabled: Boolean) {
@@ -456,17 +410,28 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     private class JsBridge {
         @JavascriptInterface
-        fun onState(playing: Boolean, title: String?) {
-            PlayerBridge.reportPlayback(playing, title)
+        fun onState(json: String) {
+            val state = try {
+                JSONArray(json)
+            } catch (e: JSONException) {
+                return
+            }
+            PlayerBridge.reportPlayback(
+                PlaybackInfo(
+                    playing = state.optBoolean(0),
+                    title = state.optString(1).ifBlank { null },
+                    artist = state.optString(2).ifBlank { null },
+                    artworkUrl = state.optString(3).ifBlank { null },
+                    positionMs = state.optLong(4),
+                    durationMs = state.optLong(5),
+                    updatedAt = SystemClock.elapsedRealtime(),
+                ),
+            )
         }
     }
 
     companion object {
-        const val EXTRA_BLACK_SCREEN = "black_screen"
-
         private const val HOME_URL = "https://m.youtube.com/"
-        private const val YOUTUBE_PACKAGE = "com.google.android.youtube"
-        private const val DARKEN_DELAY_MS = 10_000L
 
         private val INTERNAL_HOSTS = listOf(
             "youtube.com",

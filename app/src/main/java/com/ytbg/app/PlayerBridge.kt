@@ -2,6 +2,36 @@ package com.ytbg.app
 
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+
+/** What the page's player is doing right now, as reported by [Scripts]. */
+data class PlaybackInfo(
+    val playing: Boolean = false,
+    val title: String? = null,
+    val artist: String? = null,
+    val artworkUrl: String? = null,
+    val positionMs: Long = 0,
+    val durationMs: Long = 0,
+    /** [SystemClock.elapsedRealtime] when [positionMs] was measured. */
+    val updatedAt: Long = 0,
+) {
+    /** Where playback should be now if it kept going since the last report. */
+    fun expectedPosition(now: Long = SystemClock.elapsedRealtime()): Long =
+        if (playing) positionMs + (now - updatedAt) else positionMs
+
+    /** True when only the position moved as expected, i.e. nothing worth redrawing. */
+    fun sameTrackAndState(other: PlaybackInfo): Boolean =
+        playing == other.playing &&
+            title == other.title &&
+            artist == other.artist &&
+            artworkUrl == other.artworkUrl &&
+            durationMs == other.durationMs &&
+            kotlin.math.abs(other.expectedPosition(updatedAt) - positionMs) < POSITION_TOLERANCE_MS
+
+    private companion object {
+        const val POSITION_TOLERANCE_MS = 1500L
+    }
+}
 
 /**
  * Connects the WebView player (owned by [MainActivity]) with [PlaybackService].
@@ -14,18 +44,17 @@ object PlayerBridge {
         fun pause()
         fun next()
         fun previous()
+        fun seekTo(positionMs: Long)
     }
 
     interface Listener {
-        fun onPlaybackChanged(playing: Boolean, title: String?) {}
+        fun onPlaybackChanged(info: PlaybackInfo) {}
         fun onBackgroundModeChanged(enabled: Boolean) {}
     }
 
     var controller: Controller? = null
 
-    var isPlaying = false
-        private set
-    var title: String? = null
+    var info = PlaybackInfo()
         private set
 
     private val main = Handler(Looper.getMainLooper())
@@ -40,13 +69,11 @@ object PlayerBridge {
     }
 
     /** Called from the JavaScript bridge thread. */
-    fun reportPlayback(playing: Boolean, title: String?) {
+    fun reportPlayback(newInfo: PlaybackInfo) {
         main.post {
-            val cleanTitle = title?.takeIf { it.isNotBlank() }
-            if (playing == isPlaying && cleanTitle == this.title) return@post
-            isPlaying = playing
-            this.title = cleanTitle
-            listeners.toList().forEach { it.onPlaybackChanged(playing, cleanTitle) }
+            if (newInfo.sameTrackAndState(info)) return@post
+            info = newInfo
+            listeners.toList().forEach { it.onPlaybackChanged(newInfo) }
         }
     }
 

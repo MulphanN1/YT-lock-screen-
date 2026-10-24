@@ -11,14 +11,12 @@ import android.service.quicksettings.TileService
 
 object Tiles {
 
-    /** Asks the system to redraw both quick-settings tiles with the current state. */
+    /** Asks the system to redraw the quick-settings tile with the current state. */
     fun refresh(context: Context) {
-        for (cls in listOf(BackgroundTileService::class.java, BlackScreenTileService::class.java)) {
-            try {
-                TileService.requestListeningState(context, ComponentName(context, cls))
-            } catch (e: RuntimeException) {
-                // Tile not added or the launcher does not support it.
-            }
+        try {
+            TileService.requestListeningState(context, ComponentName(context, BackgroundTileService::class.java))
+        } catch (e: RuntimeException) {
+            // Tile not added or the launcher does not support it.
         }
     }
 }
@@ -31,15 +29,14 @@ private fun TileService.render(active: Boolean) {
 
 /** Opens the app and closes the notification shade. */
 @SuppressLint("StartActivityAndCollapseDeprecated")
-private fun TileService.openApp(extra: String? = null) {
+private fun TileService.openApp() {
     val intent = Intent(this, MainActivity::class.java)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    if (extra != null) intent.putExtra(extra, true)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         startActivityAndCollapse(
             PendingIntent.getActivity(
                 this,
-                extra.hashCode(),
+                0,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             ),
@@ -61,29 +58,8 @@ class BackgroundTileService : TileService() {
         val on = !Prefs.isEnabled(this)
         Prefs.setEnabled(this, on)
         PlayerBridge.reportBackgroundMode(on)
-        if (on) {
-            // The service can only start while the app is visible, and the player lives there.
-            openApp()
-        } else {
-            PlaybackService.stop(this)
-        }
+        // The player lives in the app, so turning the mode on brings it to the front.
+        if (on) openApp()
         render(on)
-    }
-}
-
-/** "Чёрный экран": keeps the real YouTube app playing under a black overlay. */
-class BlackScreenTileService : TileService() {
-
-    override fun onStartListening() {
-        render(BlackScreen.isShowing)
-    }
-
-    override fun onClick() {
-        when {
-            BlackScreen.isShowing -> BlackScreen.hide(this)
-            BlackScreen.canShow(this) -> BlackScreen.show(this)
-            else -> openApp(MainActivity.EXTRA_BLACK_SCREEN)
-        }
-        render(BlackScreen.isShowing)
     }
 }
