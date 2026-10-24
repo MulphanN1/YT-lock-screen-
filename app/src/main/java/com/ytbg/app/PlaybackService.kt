@@ -27,9 +27,6 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
-import androidx.media.AudioAttributesCompat
-import androidx.media.AudioFocusRequestCompat
-import androidx.media.AudioManagerCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import java.net.HttpURLConnection
 import java.net.URL
@@ -52,21 +49,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     private var artworkUrl: String? = null
     private var artwork: Bitmap? = null
 
-    // The WebView plays sound without taking audio focus. Taking it here makes the system
-    // (and the Huawei/Honor control-panel media card) treat this app as the current player.
-    private lateinit var audioManager: AudioManager
-    private var hasFocus = false
-    private var resumeOnFocusGain = false
-    private val focusRequest = AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
-        .setAudioAttributes(
-            AudioAttributesCompat.Builder()
-                .setUsage(AudioAttributesCompat.USAGE_MEDIA)
-                .setContentType(AudioAttributesCompat.CONTENT_TYPE_MUSIC)
-                .build(),
-        )
-        .setOnAudioFocusChangeListener { onAudioFocusChange(it) }
-        .build()
-
     /** Headphones unplugged / Bluetooth disconnected: pause like every music player does. */
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -80,7 +62,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
-        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
         createChannel()
 
         session = MediaSessionCompat(this, "YtBg").apply {
@@ -170,7 +151,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
         PlayerBridge.removeListener(this)
         main.removeCallbacksAndMessages(null)
         artworkLoader.shutdownNow()
-        abandonAudioFocus()
         setNoisyReceiver(false)
         session.isActive = false
         session.release()
@@ -182,7 +162,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     /** The "×" button: pause and hide the player. It comes back on the next play. */
     private fun close() {
         PlayerBridge.controller?.pause()
-        abandonAudioFocus()
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -190,10 +169,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
     private fun render(info: PlaybackInfo) {
         updateLocks(info.playing)
         setNoisyReceiver(info.playing)
-        if (info.playing && !hasFocus) {
-            hasFocus = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest) ==
-                AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        }
         loadArtwork(info.artworkUrl)
         session.setMetadata(metadata(info))
         session.setPlaybackState(
@@ -224,36 +199,6 @@ class PlaybackService : Service(), PlayerBridge.Listener {
             .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, info.durationMs)
             .apply { artwork?.let { putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) } }
             .build()
-
-    private fun onAudioFocusChange(change: Int) {
-        when (change) {
-            AudioManager.AUDIOFOCUS_GAIN -> {
-                hasFocus = true
-                if (resumeOnFocusGain) PlayerBridge.controller?.play()
-                resumeOnFocusGain = false
-            }
-            // A call or a voice assistant: pause and continue afterwards.
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                if (PlayerBridge.info.playing) {
-                    resumeOnFocusGain = true
-                    PlayerBridge.controller?.pause()
-                }
-            }
-            // Another player started: stop for good, like Spotify does.
-            AudioManager.AUDIOFOCUS_LOSS -> {
-                hasFocus = false
-                resumeOnFocusGain = false
-                PlayerBridge.controller?.pause()
-            }
-            // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK: the system lowers our volume by itself.
-        }
-    }
-
-    private fun abandonAudioFocus() {
-        if (!hasFocus) return
-        AudioManagerCompat.abandonAudioFocusRequest(audioManager, focusRequest)
-        hasFocus = false
-    }
 
     private fun setNoisyReceiver(on: Boolean) {
         if (on == noisyRegistered) return
