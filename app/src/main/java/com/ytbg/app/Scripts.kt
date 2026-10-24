@@ -53,6 +53,7 @@ object Scripts {
       v && isFinite(v.duration) ? Math.floor(v.duration * 1000) : 0
     ];
   }
+  window.__ytbgState = state;
   function report() {
     try {
       if (window.YTBG && document.querySelector('video')) window.YTBG.onState(JSON.stringify(state()));
@@ -162,6 +163,9 @@ object Scripts {
     const val PLAY = "(function(){var v=document.querySelector('video');if(v)v.play();})();"
 
     const val PAUSE = "(function(){var v=document.querySelector('video');if(v)v.pause();})();"
+
+    /** Polled from Android as a fallback for the JavaScript interface. */
+    const val STATE = "(window.__ytbgState && document.querySelector('video')) ? window.__ytbgState() : null"
 
     fun seekTo(positionMs: Long): String =
         "(function(){var v=document.querySelector('video');if(v)v.currentTime=${positionMs / 1000.0};})();"

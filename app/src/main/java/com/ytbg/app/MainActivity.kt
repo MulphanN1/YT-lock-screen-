@@ -17,6 +17,8 @@ import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.View
 import android.webkit.CookieManager
@@ -72,6 +74,16 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private var colorAnimator: ValueAnimator? = null
     private var ringAnimator: ObjectAnimator? = null
 
+    private val handler = Handler(Looper.getMainLooper())
+    private val pollState = object : Runnable {
+        override fun run() {
+            webView.evaluateJavascript(Scripts.STATE) { result ->
+                parsePlaybackState(result)?.let(PlayerBridge::reportPlayback)
+            }
+            handler.postDelayed(this, STATE_POLL_MS)
+        }
+    }
+
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
@@ -123,6 +135,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 else -> finish()
             }
         }
+
+        handler.post(pollState)
 
         if (savedInstanceState == null || webView.restoreState(savedInstanceState) == null) {
             webView.loadUrl(urlFromIntent(intent) ?: HOME_URL)
@@ -363,6 +377,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(pollState)
         PlayerBridge.removeListener(this)
         if (PlayerBridge.controller === this) PlayerBridge.controller = null
         PlaybackService.stop(this)
@@ -411,27 +426,31 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private class JsBridge {
         @JavascriptInterface
         fun onState(json: String) {
-            val state = try {
-                JSONArray(json)
-            } catch (e: JSONException) {
-                return
-            }
-            PlayerBridge.reportPlayback(
-                PlaybackInfo(
-                    playing = state.optBoolean(0),
-                    title = state.optString(1).ifBlank { null },
-                    artist = state.optString(2).ifBlank { null },
-                    artworkUrl = state.optString(3).ifBlank { null },
-                    positionMs = state.optLong(4),
-                    durationMs = state.optLong(5),
-                    updatedAt = SystemClock.elapsedRealtime(),
-                ),
-            )
+            parsePlaybackState(json)?.let(PlayerBridge::reportPlayback)
         }
     }
 
     companion object {
         private const val HOME_URL = "https://m.youtube.com/"
+        private const val STATE_POLL_MS = 2000L
+
+        /** Parses the array built by the page script's state(); null when there is no player. */
+        private fun parsePlaybackState(json: String?): PlaybackInfo? {
+            val state = try {
+                JSONArray(json ?: return null)
+            } catch (e: JSONException) {
+                return null
+            }
+            return PlaybackInfo(
+                playing = state.optBoolean(0),
+                title = state.optString(1).ifBlank { null },
+                artist = state.optString(2).ifBlank { null },
+                artworkUrl = state.optString(3).ifBlank { null },
+                positionMs = state.optLong(4),
+                durationMs = state.optLong(5),
+                updatedAt = SystemClock.elapsedRealtime(),
+            )
+        }
 
         private val INTERNAL_HOSTS = listOf(
             "youtube.com",
