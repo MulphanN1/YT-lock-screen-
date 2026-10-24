@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="power_off">#4A4D52</color>
+    <color name="header_bg">#0F0F0F</color>
+    <color name="text_primary">#F1F1F1</color>
+    <color name="text_secondary">#AAAAAA</color>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.YtBg" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/power_on</item>
+        <item name="android:windowBackground">@color/header_bg</item>
+    </style>
+</resources>

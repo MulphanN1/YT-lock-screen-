@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">YT Фон</string>
+    <string name="mode_title">Фоновое воспроизведение</string>
+    <string name="mode_off">Выключено. Нажмите кнопку, чтобы музыка играла при выключенном экране</string>
+    <string name="mode_on">Включено: можно выключать экран</string>
+    <string name="now_playing">Сейчас: %1$s</string>
+    <string name="power_button">Включить или выключить фоновое воспроизведение</string>
+    <string name="channel_name">Фоновое воспроизведение</string>
+    <string name="notif_title_default">YouTube в фоне</string>
+    <string name="notif_text">Музыка играет при выключенном экране</string>
+    <string name="action_play">Играть</string>
+    <string name="action_pause">Пауза</string>
+    <string name="action_stop">Выключить</string>
+</resources>
