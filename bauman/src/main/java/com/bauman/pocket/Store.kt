@@ -58,10 +58,11 @@ object Store {
             numerator = short(num),
             denominator = short(den),
             items = Md.items(deadlines.orEmpty(), Source.DEADLINE) + Md.items(rk.orEmpty(), Source.RK),
-            lks = Md.lks(lks),
+            lksPlan = Md.lks(lks),
             grades = Md.grades(brs.orEmpty()),
             personal = deadlines != null,
             syncedAt = syncedAt(ctx),
+            lks = LksClient.load(ctx),
         )
     }
 

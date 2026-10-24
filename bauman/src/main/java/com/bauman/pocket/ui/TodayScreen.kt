@@ -76,7 +76,7 @@ fun LazyListScope.todayScreen(
         }
     }
 
-    val marks = data.lks[week].orEmpty()
+    val marks = data.lksPlan[week].orEmpty()
     if (marks.isNotEmpty()) {
         item("lks") {
             val p = LocalPalette.current

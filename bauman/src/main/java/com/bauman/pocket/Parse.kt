@@ -90,11 +90,13 @@ data class Data(
     val numerator: List<List<Lesson>>,
     val denominator: List<List<Lesson>>,
     val items: List<Item>,
-    val lks: Map<Int, List<LksMark>>,
+    val lksPlan: Map<Int, List<LksMark>>,
     val grades: List<Grade>,
     /** Сроки и баллы загружены из репозитория (без токена есть только расписание). */
     val personal: Boolean,
     val syncedAt: Long,
+    /** Успеваемость из ЛКС, если вход выполнен. */
+    val lks: LksData? = null,
 ) {
     fun lessons(d: LocalDate): List<Lesson> {
         val dow = d.dayOfWeek.value - 1

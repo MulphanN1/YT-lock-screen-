@@ -189,9 +189,9 @@ class Ticker : BroadcastReceiver() {
 
 class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result {
-        if (Store.token(applicationContext).isBlank()) return Result.success()
-        // Ошибку покажут настройки; следующая попытка — по расписанию, без повторов вдогонку.
-        Store.syncCatching(applicationContext)
+        // Ошибки покажут настройки; следующая попытка — по расписанию, без повторов вдогонку.
+        if (Store.token(applicationContext).isNotBlank()) Store.syncCatching(applicationContext)
+        if (LksClient.connected(applicationContext)) LksClient.syncCatching(applicationContext)
         Ticker.tick(applicationContext)
         return Result.success()
     }

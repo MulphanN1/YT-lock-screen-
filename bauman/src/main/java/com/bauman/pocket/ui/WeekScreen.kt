@@ -56,7 +56,7 @@ fun LazyListScope.weekScreen(data: Data, at: LocalDateTime, week: Int, onWeek: (
         }
     }
 
-    val marks = data.lks[week].orEmpty()
+    val marks = data.lksPlan[week].orEmpty()
     if (marks.isNotEmpty()) {
         item("lks") {
             val p = LocalPalette.current
@@ -121,7 +121,7 @@ fun LazyListScope.weekScreen(data: Data, at: LocalDateTime, week: Int, onWeek: (
     item("footer") {
         if (week == current) {
             val p = LocalPalette.current
-            val nextWeek = data.lks[week + 1].orEmpty()
+            val nextWeek = data.lksPlan[week + 1].orEmpty()
             if (nextWeek.isNotEmpty()) {
                 Note("На следующей неделе по ЛКС: " + nextWeek.joinToString(", ") { "${Semester.subject(it.slug)} — ${it.mark}" }, p.ink2)
             }

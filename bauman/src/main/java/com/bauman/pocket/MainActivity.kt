@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -54,6 +55,9 @@ import com.bauman.pocket.ui.weekScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.resume
 import kotlinx.coroutines.withContext
 
 enum class Tab(val title: String) { TODAY("Сегодня"), WEEK("Неделя"), DEADLINES("Сроки"), GRADES("Баллы") }
@@ -72,6 +76,12 @@ class MainActivity : ComponentActivity() {
     private var settings by mutableStateOf<SettingsState?>(null)
 
     private val askNotifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        lifecycleScope.launch(Dispatchers.IO) { Ticker.tick(applicationContext) }
+    }
+
+    private val lksLogin = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        data = Store.load(this)
+        settings = readSettings()
         lifecycleScope.launch(Dispatchers.IO) { Ticker.tick(applicationContext) }
     }
 
@@ -96,8 +106,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         data = Store.load(this)
-        val stale = System.currentTimeMillis() - Store.syncedAt(this) > AUTO_SYNC_MS
-        if (Store.token(this).isNotBlank() && stale) refresh(quiet = true)
+        val now = System.currentTimeMillis()
+        val stale = (Store.token(this).isNotBlank() && now - Store.syncedAt(this) > AUTO_SYNC_MS) ||
+            (LksClient.connected(this) && now - LksClient.syncedAt(this) > AUTO_SYNC_MS)
+        if (stale) refresh(quiet = true)
     }
 
     private fun handle(intent: Intent?) {
@@ -114,24 +126,52 @@ class MainActivity : ComponentActivity() {
         error = Store.lastError(this),
         notifyNow = Store.notifyNow(this),
         notifyDeadlines = Store.notifyDeadlines(this),
+        lksSyncedAt = LksClient.syncedAt(this),
+        lksError = LksClient.lastError(this),
     )
 
     private fun refresh(quiet: Boolean = false) {
         if (refreshing) return
-        if (Store.token(this).isBlank()) {
+        val github = Store.token(this).isNotBlank()
+        val lks = LksClient.connected(this)
+        if (!github && !lks) {
             if (!quiet) showSettings = true
             return
         }
         refreshing = true
         lifecycleScope.launch {
-            val error = withContext(Dispatchers.IO) {
-                Store.syncCatching(applicationContext).also { Ticker.tick(applicationContext) }
-            }
+            val app = applicationContext
+            val error = withContext(Dispatchers.IO) { if (github) Store.syncCatching(app) else null }
+            var lksError = withContext(Dispatchers.IO) { if (lks) LksClient.syncCatching(app) else null }
+            // Сессия ЛКС истекла: сайт в скрытом браузере сам её продлит, если вход ещё помнится.
+            if (lksError is LksClient.AuthError && silentLksLogin()) lksError = null
+            withContext(Dispatchers.IO) { Ticker.tick(app) }
             data = Store.load(this@MainActivity)
             settings = readSettings()
             refreshing = false
-            if (error != null && !quiet) Toast.makeText(this@MainActivity, error, Toast.LENGTH_LONG).show()
+            val message = error ?: lksError?.message
+            if (message != null && !quiet) Toast.makeText(this@MainActivity, message, Toast.LENGTH_LONG).show()
         }
+    }
+
+    private suspend fun silentLksLogin(): Boolean {
+        var web: WebView? = null
+        val ok = withTimeoutOrNull(25_000) {
+            suspendCancellableCoroutine { cont ->
+                web = LksClient.webView(this@MainActivity) { if (cont.isActive) cont.resume(true) }
+                web?.loadUrl(LksClient.SITE)
+            }
+        } ?: false
+        web?.destroy()
+        return ok
+    }
+
+    private fun openLksLogin() = lksLogin.launch(Intent(this, LksLoginActivity::class.java))
+
+    private fun lksLogout() {
+        LksClient.logout(this)
+        data = Store.load(this)
+        settings = readSettings()
     }
 
     private fun save(repo: String, token: String) {
@@ -173,6 +213,8 @@ class MainActivity : ComponentActivity() {
                         onSave = ::save,
                         onNotifyNow = { toggle("notify_now", it) },
                         onNotifyDeadlines = { toggle("notify_deadlines", it) },
+                        onLksLogin = ::openLksLogin,
+                        onLksLogout = ::lksLogout,
                     )
                 }
             } else Column(Modifier.fillMaxSize()) {
@@ -182,7 +224,7 @@ class MainActivity : ComponentActivity() {
                             Tab.TODAY -> todayScreen(data, at) { showSettings = true }
                             Tab.WEEK -> weekScreen(data, at, week) { week = it }
                             Tab.DEADLINES -> deadlinesScreen(data, at) { showSettings = true }
-                            Tab.GRADES -> gradesScreen(data) { showSettings = true }
+                            Tab.GRADES -> gradesScreen(data, at, ::openLksLogin) { showSettings = true }
                         }
                     }
                 }

@@ -34,8 +34,8 @@ import com.bauman.pocket.Grade
 import com.bauman.pocket.Item
 import com.bauman.pocket.Plan
 import com.bauman.pocket.Ru
+import com.bauman.pocket.Semester
 import java.time.LocalDateTime
-import java.util.Locale
 
 // ---------------------------------------------------------------- сроки
 
@@ -60,6 +60,7 @@ fun LazyListScope.deadlinesScreen(data: Data, at: LocalDateTime, onSettings: () 
     if (asks.isNotEmpty()) item("claude") { ClaudeBlock(asks, at) }
 
     section("overdue", "Срок прошёл", "отметь у Claude, как прошло", b.overdue, at, overdue = true)
+    data.lks?.let { lksHanging(it, it.week ?: Semester.weekOf(at.toLocalDate())) }
     section("upcoming", "Впереди", null, b.upcoming, at)
     section("waiting", "Ждём результат", null, b.waiting, at, showWhen = false)
     section("undated", "Без срока", null, b.undated, at, showWhen = false)
@@ -134,9 +135,26 @@ fun FlatButton(label: String, filled: Boolean, onClick: () -> Unit) {
 
 // ---------------------------------------------------------------- баллы
 
-fun LazyListScope.gradesScreen(data: Data, onSettings: () -> Unit) {
+fun LazyListScope.gradesScreen(data: Data, at: LocalDateTime, onLksLogin: () -> Unit, onSettings: () -> Unit) {
+    val lks = data.lks
+    if (lks != null) {
+        lksGrades(lks, lks.week ?: Semester.weekOf(at.toLocalDate()))
+        return
+    }
     item("header") {
         ScreenHeader(kicker = "по brs.md", title = "Баллы", sub = "Нажми на предмет, чтобы увидеть работы")
+    }
+    item("lks") {
+        val p = LocalPalette.current
+        Column(Modifier.padding(start = Gutter, end = Gutter, top = 16.dp)) {
+            Text(
+                "Здесь баллы, которые Claude записал вручную, — они бывают неточными. Точные баллы по модулям " +
+                    "и пороги на 3/4/5 — из ЛКС.",
+                style = Type.small, color = p.ink2,
+            )
+            Spacer(Modifier.height(10.dp))
+            FlatButton("Войти в ЛКС", filled = true, onClick = onLksLogin)
+        }
     }
     if (!data.personal) {
         item("connect") {
@@ -156,9 +174,6 @@ fun LazyListScope.gradesScreen(data: Data, onSettings: () -> Unit) {
         )
     }
 }
-
-private fun fmt(x: Double): String =
-    if (x == Math.floor(x)) x.toLong().toString() else String.format(Locale("ru"), "%.1f", x)
 
 @Composable
 private fun GradeBlock(g: Grade) {

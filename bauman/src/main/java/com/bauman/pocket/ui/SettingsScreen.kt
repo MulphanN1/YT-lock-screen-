@@ -40,6 +40,8 @@ class SettingsState(
     val error: String?,
     val notifyNow: Boolean,
     val notifyDeadlines: Boolean,
+    val lksSyncedAt: Long,
+    val lksError: String?,
 )
 
 @Composable
@@ -50,6 +52,8 @@ fun SettingsScreen(
     onSave: (repo: String, token: String) -> Unit,
     onNotifyNow: (Boolean) -> Unit,
     onNotifyDeadlines: (Boolean) -> Unit,
+    onLksLogin: () -> Unit,
+    onLksLogout: () -> Unit,
 ) {
     val p = LocalPalette.current
     var repo by remember(state.repo) { mutableStateOf(state.repo) }
@@ -128,6 +132,32 @@ fun SettingsScreen(
                             Text(line, style = Type.small, color = p.ink)
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            SectionLabel("ЛКС")
+            Column(Modifier.padding(horizontal = Gutter, vertical = 8.dp)) {
+                val connected = state.lksSyncedAt > 0
+                when {
+                    connected && state.lksError != null -> Text(state.lksError, style = Type.small, color = p.hot)
+                    connected -> {
+                        val t = Instant.ofEpochMilli(state.lksSyncedAt).atZone(Semester.ZONE).toLocalDateTime()
+                        Text(
+                            "Баллы и контрольные из ЛКС · загружено ${Ru.ddmm(t.toLocalDate())} в ${Ru.hm(t.toLocalTime())}",
+                            style = Type.small, color = p.ink2,
+                        )
+                    }
+                    else -> Text(
+                        "Точные баллы по модулям и пороги на 3/4/5. Входишь на сайте МГТУ — пароль приложение не видит.",
+                        style = Type.small, color = p.ink2,
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FlatButton(if (connected) "Войти заново" else "Войти в ЛКС", filled = !connected, onClick = onLksLogin)
+                    if (connected) FlatButton("Выйти", filled = false, onClick = onLksLogout)
                 }
             }
         }
