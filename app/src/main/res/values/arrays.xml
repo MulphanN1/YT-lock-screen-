@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SponsorBlock category ids: https://wiki.sponsor.ajay.app/w/Segment_Categories -->
+    <string-array name="sponsor_categories_values">
+        <item>music_offtopic</item>
+        <item>sponsor</item>
+        <item>selfpromo</item>
+        <item>interaction</item>
+        <item>intro</item>
+        <item>outro</item>
+        <item>preview</item>
+        <item>filler</item>
+    </string-array>
+    <string-array name="sponsor_categories_names">
+        <item>Немузыкальные части в клипах</item>
+        <item>Реклама спонсоров</item>
+        <item>Самореклама автора</item>
+        <item>«Подпишитесь, поставьте лайк»</item>
+        <item>Заставки и интро</item>
+        <item>Концовки и титры</item>
+        <item>Превью «в этом видео»</item>
+        <item>Отступления не по теме</item>
+    </string-array>
+    <!-- Keep in sync with Prefs.DEFAULT_SPONSOR_CATEGORIES. -->
+    <string-array name="sponsor_categories_default">
+        <item>music_offtopic</item>
+        <item>sponsor</item>
+        <item>selfpromo</item>
+        <item>interaction</item>
+    </string-array>
+</resources>

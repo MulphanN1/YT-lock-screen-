@@ -62,8 +62,20 @@ object Scripts {
   }
   ['play', 'playing', 'pause', 'ended', 'emptied', 'loadedmetadata', 'durationchange', 'seeked', 'ratechange']
     .forEach(function (n) { document.addEventListener(n, report, true); });
-  // Catches title/artwork that arrive late and anything the events miss.
-  setInterval(report, 2000);
+  // Catches anything the events miss; events cover the rest, so this can be slow.
+  setInterval(report, 5000);
+
+  // SponsorBlock: Android fills __ytbgSegments with [start, end] pairs for the video.
+  window.__ytbgSegments = { id: '', list: [] };
+  document.addEventListener('timeupdate', function (e) {
+    var v = e.target, s = window.__ytbgSegments;
+    if (!s.list.length || !(v instanceof HTMLVideoElement)) return;
+    if (new URLSearchParams(location.search).get('v') !== s.id) return;
+    var t = v.currentTime;
+    for (var i = 0; i < s.list.length; i++) {
+      if (t >= s.list[i][0] && t < s.list[i][1] - 0.5) { v.currentTime = s.list[i][1]; return; }
+    }
+  }, true);
 })();
 """
 
@@ -123,7 +135,7 @@ object Scripts {
       v.playbackRate = saved.rate;
       saved = null;
     }
-  }, 500);
+  }, 1000);
 })();
 """
 
@@ -167,6 +179,38 @@ object Scripts {
 
     /** Polled from Android as a fallback for the JavaScript interface. */
     const val STATE = "(window.__ytbgState && document.querySelector('video')) ? window.__ytbgState() : null"
+
+    /** Lowest quality while nobody sees the video: less data and far less decoding work. */
+    const val LOW_QUALITY = """
+(function () {
+  var p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+  if (!p || !p.setPlaybackQualityRange) return;
+  try {
+    if (!window.__ytbgQuality) window.__ytbgQuality = (p.getPlaybackQuality && p.getPlaybackQuality()) || 'auto';
+    p.setPlaybackQualityRange('tiny', 'tiny');
+    if (p.setPlaybackQuality) p.setPlaybackQuality('tiny');
+  } catch (e) {}
+})();
+"""
+
+    const val RESTORE_QUALITY = """
+(function () {
+  var p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
+  var q = window.__ytbgQuality;
+  window.__ytbgQuality = null;
+  if (!p || !q || !p.setPlaybackQualityRange) return;
+  try {
+    p.setPlaybackQualityRange(q === 'unknown' ? 'auto' : q, q === 'unknown' ? 'auto' : q);
+    if (p.setPlaybackQuality) p.setPlaybackQuality(q);
+  } catch (e) {}
+})();
+"""
+
+    /** [videoId] must already be validated: it is pasted into the script. */
+    fun segments(videoId: String, segments: List<Segment>): String {
+        val list = segments.joinToString(",", "[", "]") { "[${it.first},${it.second}]" }
+        return "window.__ytbgSegments={id:'$videoId',list:$list};"
+    }
 
     fun seekTo(positionMs: Long): String =
         "(function(){var v=document.querySelector('video');if(v)v.currentTime=${positionMs / 1000.0};})();"

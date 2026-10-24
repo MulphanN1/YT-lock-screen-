@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keys and defaults must match Prefs.kt. -->
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/settings_playback">
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
+            app:key="low_quality_background"
+            app:summary="@string/settings_low_quality_summary"
+            app:title="@string/settings_low_quality" />
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
+            app:key="resume_playback"
+            app:summary="@string/settings_resume_summary"
+            app:title="@string/settings_resume" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/settings_skip">
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
+            app:key="sponsorblock"
+            app:summary="@string/settings_sponsorblock_summary"
+            app:title="@string/settings_sponsorblock" />
+
+        <MultiSelectListPreference
+            app:defaultValue="@array/sponsor_categories_default"
+            app:dependency="sponsorblock"
+            app:entries="@array/sponsor_categories_names"
+            app:entryValues="@array/sponsor_categories_values"
+            app:iconSpaceReserved="false"
+            app:key="sponsorblock_categories"
+            app:title="@string/settings_sponsorblock_categories" />
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
+            app:key="ad_block"
+            app:summary="@string/settings_ad_block_summary"
+            app:title="@string/settings_ad_block" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/settings_quick_access">
+
+        <Preference
+            app:iconSpaceReserved="false"
+            app:key="add_widget"
+            app:summary="@string/settings_widget_summary"
+            app:title="@string/settings_widget" />
+
+        <Preference
+            app:iconSpaceReserved="false"
+            app:key="add_tile"
+            app:summary="@string/settings_tile_summary"
+            app:title="@string/settings_tile" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
+        app:title="@string/settings_about">
+
+        <Preference
+            app:iconSpaceReserved="false"
+            app:key="version"
+            app:selectable="false"
+            app:title="@string/app_name" />
+    </PreferenceCategory>
+</PreferenceScreen>

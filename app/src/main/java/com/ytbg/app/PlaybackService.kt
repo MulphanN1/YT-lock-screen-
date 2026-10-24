@@ -69,7 +69,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
     private var artworkKey: String? = null
     private var artwork: Bitmap? = null
 
-    /** Smaller, rounded copies of [artwork] for the Huawei notification layouts. */
+    /** Smaller, rounded copies of [artwork] for the widget and the Huawei notification layouts. */
     private var artworkSmall: Bitmap? = null
     private var artworkBig: Bitmap? = null
 
@@ -196,6 +196,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
     @SuppressLint("MissingPermission")
     override fun onPlaybackChanged(info: PlaybackInfo) {
         render(info)
+        PlayerWidget.update(this, PlayerWidget.State(title(info), artist(info), info.playing, artworkSmall))
         if (isShowing && NotificationManagerCompat.from(this).areNotificationsEnabled()) {
             NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(info))
         }
@@ -208,6 +209,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
 
     override fun onDestroy() {
         isShowing = false
+        PlayerWidget.update(this, null)
         PlayerBridge.removeListener(this)
         main.removeCallbacksAndMessages(null)
         loader.shutdownNow()
@@ -399,10 +401,8 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             main.post {
                 if (key != artworkKey) return@post
                 artwork = bitmap
-                if (usePlayerLayout) {
-                    artworkSmall = rounded(bitmap, SMALL_ARTWORK_WIDTH, 0.08f)
-                    artworkBig = rounded(bitmap, BIG_ARTWORK_WIDTH, 0.04f)
-                }
+                artworkSmall = rounded(bitmap, SMALL_ARTWORK_WIDTH, 0.08f)
+                if (usePlayerLayout) artworkBig = rounded(bitmap, BIG_ARTWORK_WIDTH, 0.04f)
                 onPlaybackChanged(PlayerBridge.info)
             }
         }
@@ -604,10 +604,10 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         private val usePlayerLayout = Build.MANUFACTURER.lowercase() in setOf("huawei", "honor")
 
         private const val ACTION_SHOW = "com.ytbg.app.SHOW"
-        private const val ACTION_PLAY = "com.ytbg.app.PLAY"
-        private const val ACTION_PAUSE = "com.ytbg.app.PAUSE"
-        private const val ACTION_NEXT = "com.ytbg.app.NEXT"
-        private const val ACTION_PREVIOUS = "com.ytbg.app.PREVIOUS"
+        const val ACTION_PLAY = "com.ytbg.app.PLAY"
+        const val ACTION_PAUSE = "com.ytbg.app.PAUSE"
+        const val ACTION_NEXT = "com.ytbg.app.NEXT"
+        const val ACTION_PREVIOUS = "com.ytbg.app.PREVIOUS"
         private const val ACTION_CLOSE = "com.ytbg.app.CLOSE"
         private const val ACTION_DISMISS = "com.ytbg.app.DISMISS"
 

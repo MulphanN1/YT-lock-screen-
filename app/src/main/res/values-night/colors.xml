@@ -4,4 +4,5 @@
     <color name="header_bg">#0F0F0F</color>
     <color name="text_primary">#F1F1F1</color>
     <color name="text_secondary">#AAAAAA</color>
+    <color name="widget_bg">#F2202124</color>
 </resources>

@@ -27,4 +27,31 @@
     <string name="last_pause">Последняя пауза: %1$s</string>
     <string name="no_pauses">Пауз пока не было</string>
     <string name="audio_status">Звук: %1$s</string>
+
+    <string name="settings_title">Настройки</string>
+    <string name="settings_playback">Воспроизведение</string>
+    <string name="settings_low_quality">Экономия в фоне</string>
+    <string name="settings_low_quality_summary">Когда экран выключен или приложение свёрнуто, видео переключается на минимальное качество: меньше трафика и батареи, звук тот же</string>
+    <string name="settings_resume">Продолжать с места остановки</string>
+    <string name="settings_resume_summary">При запуске открывается последний трек с той же секунды</string>
+    <string name="settings_skip">Пропуски</string>
+    <string name="settings_sponsorblock">Пропускать лишнее (SponsorBlock)</string>
+    <string name="settings_sponsorblock_summary">Сам перематывает разговоры в клипах, рекламу спонсоров и другое по базе SponsorBlock</string>
+    <string name="settings_sponsorblock_categories">Что пропускать</string>
+    <string name="settings_nothing_selected">Ничего не выбрано</string>
+    <string name="settings_ad_block">Блокировать рекламу</string>
+    <string name="settings_ad_block_summary">Баннеры скрываются, рекламные ролики перематываются без звука</string>
+    <string name="settings_quick_access">Быстрый доступ</string>
+    <string name="settings_widget">Виджет на главный экран</string>
+    <string name="settings_widget_summary">Плеер с обложкой и кнопками на рабочем столе</string>
+    <string name="settings_widget_manual">Зажмите пустое место на рабочем столе → «Виджеты» → «YT Фон».</string>
+    <string name="settings_tile">Плитка в шторку</string>
+    <string name="settings_tile_summary">Переключатель фонового режима в быстрых настройках, как у VPN</string>
+    <string name="settings_tile_already">Плитка уже добавлена</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_version">Версия %1$s</string>
+    <string name="settings_open">Настройки</string>
+    <string name="widget_description">Плеер YT Фон</string>
+    <string name="widget_idle_title">YT Фон</string>
+    <string name="widget_idle_text">Нажмите, чтобы открыть</string>
 </resources>

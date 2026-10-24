@@ -1,27 +1,53 @@
 package com.ytbg.app
 
 import android.content.Context
+import android.content.SharedPreferences
 
+/** App settings. The keys are shared with res/xml/settings.xml. */
 object Prefs {
-    private const val FILE = "ytbg"
-    private const val KEY_ENABLED = "background_enabled"
-    private const val KEY_AD_BLOCK = "ad_block"
+    const val FILE = "ytbg"
 
-    fun isEnabled(context: Context): Boolean =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_ENABLED, true)
+    private const val KEY_ENABLED = "background_enabled"
+    const val KEY_AD_BLOCK = "ad_block"
+    const val KEY_LOW_QUALITY = "low_quality_background"
+    const val KEY_RESUME = "resume_playback"
+    const val KEY_SPONSOR_BLOCK = "sponsorblock"
+    const val KEY_SPONSOR_CATEGORIES = "sponsorblock_categories"
+    private const val KEY_LAST_URL = "last_url"
+    private const val KEY_LAST_POSITION = "last_position_ms"
+
+    /** Keep in sync with the defaultValue in settings.xml. */
+    val DEFAULT_SPONSOR_CATEGORIES = setOf("sponsor", "selfpromo", "interaction", "music_offtopic")
+
+    private fun prefs(context: Context): SharedPreferences =
+        context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ENABLED, true)
 
     fun setEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_ENABLED, enabled)
+        prefs(context).edit().putBoolean(KEY_ENABLED, enabled).apply()
+    }
+
+    fun isAdBlockEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_AD_BLOCK, true)
+
+    fun isLowQualityInBackground(context: Context): Boolean = prefs(context).getBoolean(KEY_LOW_QUALITY, true)
+
+    fun isResumeEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_RESUME, true)
+
+    fun isSponsorBlockEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_SPONSOR_BLOCK, true)
+
+    fun sponsorCategories(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_SPONSOR_CATEGORIES, DEFAULT_SPONSOR_CATEGORIES) ?: DEFAULT_SPONSOR_CATEGORIES
+
+    /** Where to continue after the app was closed: the watch page and the position in it. */
+    fun saveLastPlayback(context: Context, url: String, positionMs: Long) {
+        prefs(context).edit()
+            .putString(KEY_LAST_URL, url)
+            .putLong(KEY_LAST_POSITION, positionMs)
             .apply()
     }
 
-    fun isAdBlockEnabled(context: Context): Boolean =
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).getBoolean(KEY_AD_BLOCK, true)
+    fun lastPlaybackUrl(context: Context): String? = prefs(context).getString(KEY_LAST_URL, null)
 
-    fun setAdBlockEnabled(context: Context, enabled: Boolean) {
-        context.getSharedPreferences(FILE, Context.MODE_PRIVATE).edit()
-            .putBoolean(KEY_AD_BLOCK, enabled)
-            .apply()
-    }
+    fun lastPlaybackPosition(context: Context): Long = prefs(context).getLong(KEY_LAST_POSITION, 0)
 }
