@@ -27,16 +27,19 @@ jobs:
           ./gradlew --no-daemon assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk YT-Fon.apk
 
+      # Optional: fails when the account's Actions storage quota is full; the release below does not use it.
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: YT-Fon-apk
           path: YT-Fon.apk
 
       - name: Publish release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: YT Фон (сборка ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
           make_latest: true
           files: YT-Fon.apk
