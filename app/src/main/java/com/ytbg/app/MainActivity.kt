@@ -31,7 +31,6 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -117,6 +116,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        Diagnostics.installCrashHandler(this)
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
@@ -148,7 +148,10 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             val pause = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
                 ?: getString(R.string.no_pauses)
             val message = pause + "\n" + getString(R.string.audio_status, PlaybackService.audioStatus)
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setMessage(listOfNotNull(message, Diagnostics.report(this)).joinToString("\n\n"))
+                .setPositiveButton(R.string.close, null)
+                .show()
             true
         }
 
@@ -212,6 +215,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 // Without this the whole app would crash together with the page.
+                Diagnostics.note(this@MainActivity, "процесс страницы ${if (detail.didCrash()) "упал" else "убит системой"}")
                 if (view === webView) handler.post { recreateWebView() }
                 return true
             }
@@ -485,7 +489,13 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         webView.saveState(outState)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_LOW) Diagnostics.note(this, "мало памяти (уровень $level)")
+    }
+
     override fun onDestroy() {
+        Diagnostics.note(this, "экран закрыт: ${if (isFinishing) "пользователем" else "системой"}")
         handler.removeCallbacks(pollState)
         handler.removeCallbacks(suspendIdle)
         PlayerBridge.removeListener(this)
