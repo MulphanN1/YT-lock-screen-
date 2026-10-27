@@ -65,6 +65,26 @@ object Scripts {
   // Catches anything the events miss; events cover the rest, so this can be slow.
   setInterval(report, 5000);
 
+  // "Video paused. Continue watching?": YouTube asks after a long time without touches.
+  // Keep its idle clock fresh, and confirm the dialog if it still shows up.
+  var CONFIRM = /^\s*(да|продолжить|продолжить просмотр|yes|continue|continue watching)\s*[.!]?\s*$/i;
+  setInterval(function () {
+    window._lact = Date.now();
+    var dialogs = document.querySelectorAll(
+      'yt-confirm-dialog-renderer,ytm-confirm-dialog-renderer,tp-yt-paper-dialog,ytm-dialog,[role="dialog"]');
+    for (var i = 0; i < dialogs.length; i++) {
+      var buttons = dialogs[i].querySelectorAll('button,yt-button-renderer,ytm-button-renderer,a');
+      for (var j = 0; j < buttons.length; j++) {
+        if (CONFIRM.test(buttons[j].textContent || buttons[j].getAttribute('aria-label') || '')) {
+          buttons[j].click();
+          var v = document.querySelector('video');
+          if (v && v.paused && !v.ended) v.play();
+          return;
+        }
+      }
+    }
+  }, 3000);
+
   // SponsorBlock: Android fills __ytbgSegments with [start, end] pairs for the video.
   window.__ytbgSegments = { id: '', list: [] };
   document.addEventListener('timeupdate', function (e) {
