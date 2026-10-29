@@ -13,8 +13,10 @@ android {
         applicationId = "com.ytbg.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // CI numbers every build, so the settings screen shows which one is installed.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = build ?: 1
+        versionName = if (build != null) "1.0 (сборка $build)" else "1.0 (локальная)"
     }
 
     signingConfigs {
