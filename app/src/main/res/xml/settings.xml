@@ -68,6 +68,17 @@
 
     <PreferenceCategory
         app:iconSpaceReserved="false"
+        app:title="@string/settings_diagnostics">
+
+        <Preference
+            app:iconSpaceReserved="false"
+            app:key="crash_log"
+            app:summary="@string/settings_crash_log_summary"
+            app:title="@string/settings_crash_log" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:iconSpaceReserved="false"
         app:title="@string/settings_about">
 
         <Preference

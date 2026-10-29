@@ -2,6 +2,8 @@ package com.ytbg.app
 
 import android.app.StatusBarManager
 import android.appwidget.AppWidgetManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.graphics.drawable.Icon
 import android.os.Build
@@ -72,6 +74,10 @@ class SettingsActivity : AppCompatActivity() {
                 addTile()
                 true
             }
+            findPreference<Preference>("crash_log")?.setOnPreferenceClickListener {
+                showCrashLog()
+                true
+            }
             findPreference<Preference>("version")?.summary = getString(R.string.settings_version, appVersion())
         }
 
@@ -111,6 +117,22 @@ class SettingsActivity : AppCompatActivity() {
                     Toast.makeText(context, R.string.settings_tile_already, Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+
+        private fun showCrashLog() {
+            val context = requireContext()
+            val report = Diagnostics.report(context)
+            val dialog = MaterialAlertDialogBuilder(context)
+                .setTitle(R.string.settings_crash_log)
+                .setMessage(report ?: getString(R.string.settings_crash_log_empty))
+                .setPositiveButton(android.R.string.ok, null)
+            if (report != null) {
+                dialog.setNeutralButton(R.string.settings_copy) { _, _ ->
+                    context.getSystemService(ClipboardManager::class.java)
+                        .setPrimaryClip(ClipData.newPlainText(getString(R.string.settings_crash_log), report))
+                }
+            }
+            dialog.show()
         }
 
         private fun showHint(title: Int, message: Int) {

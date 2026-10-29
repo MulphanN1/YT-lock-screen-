@@ -31,7 +31,6 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -76,6 +75,13 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     /** JavaScript timers stopped because the app sat paused in the background. */
     private var suspended = false
 
+    /** Videos played in the current page: YouTube's page only grows as autoplay goes on. */
+    private var videosSinceLoad = 0
+
+    /** The system is short of memory: open the next video in a fresh page. */
+    private var freshLoadPending = false
+    private var lastFreshLoadAt = 0L
+
     private var lastVideoId: String? = null
     private var lastSavedAt = 0L
     private var sponsorSettings: Pair<Boolean, Set<String>>? = null
@@ -117,6 +123,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        Diagnostics.installCrashHandler(this)
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
@@ -148,7 +155,10 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             val pause = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
                 ?: getString(R.string.no_pauses)
             val message = pause + "\n" + getString(R.string.audio_status, PlaybackService.audioStatus)
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setMessage(listOfNotNull(message, Diagnostics.report(this)).joinToString("\n\n"))
+                .setPositiveButton(R.string.close, null)
+                .show()
             true
         }
 
@@ -208,10 +218,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock), null)
                 // A fresh page has lost the skip segments: load them again for the next video.
                 lastVideoId = null
+                videosSinceLoad = 0
             }
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 // Without this the whole app would crash together with the page.
+                Diagnostics.note(this@MainActivity, "процесс страницы ${if (detail.didCrash()) "упал" else "убит системой"}")
                 if (view === webView) handler.post { recreateWebView() }
                 return true
             }
@@ -280,6 +292,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         parent.addView(webView, index, params)
         webView.keepPlayingInBackground = enabled
         setupWebView()
+        if (!started && enabled) webView.settings.loadsImagesAutomatically = false
         // Only reopen the track if it was playing: opening a video starts it.
         webView.loadUrl((if (wasPlaying) resumeUrl() else null) ?: HOME_URL)
     }
@@ -287,15 +300,34 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     /** The last watch page with the position, or null when the setting is off. */
     private fun resumeUrl(): String? {
         if (!Prefs.isResumeEnabled(this)) return null
-        val uri = Uri.parse(Prefs.lastPlaybackUrl(this) ?: return null)
+        return withPosition(Prefs.lastPlaybackUrl(this) ?: return null, Prefs.lastPlaybackPosition(this))
+    }
+
+    /** [url] with its start time ("t") replaced by [positionMs]. */
+    private fun withPosition(url: String, positionMs: Long): String {
+        val uri = Uri.parse(url)
         val builder = uri.buildUpon().clearQuery()
         for (name in uri.queryParameterNames) {
             if (name == "t") continue
             uri.getQueryParameters(name).forEach { builder.appendQueryParameter(name, it) }
         }
-        val seconds = Prefs.lastPlaybackPosition(this) / 1000
+        val seconds = positionMs / 1000
         if (seconds > 0) builder.appendQueryParameter("t", "${seconds}s")
         return builder.build().toString()
+    }
+
+    /**
+     * Opens the current video in a new page at the same second. The old page is thrown
+     * away with everything it piled up over hours of autoplay; the music pauses only for
+     * the moment the new page loads. Returns false when not on a video.
+     */
+    private fun loadFresh(): Boolean {
+        val url = webView.url?.takeIf { "/watch" in it } ?: return false
+        freshLoadPending = false
+        lastFreshLoadAt = SystemClock.elapsedRealtime()
+        webView.clearCache(false)
+        webView.loadUrl(withPosition(url, PlayerBridge.info.expectedPosition()))
+        return true
     }
 
     private fun savePlayback(info: PlaybackInfo, force: Boolean = false) {
@@ -336,6 +368,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     private fun onVideoChanged(videoId: String) {
         lastVideoId = videoId
+        // Between tracks a reload is barely noticeable. Without a memory warning it is done only unseen.
+        videosSinceLoad++
+        if (freshLoadPending || (!started && videosSinceLoad > FRESH_PAGE_VIDEOS)) {
+            if (loadFresh()) return
+        }
         loadSkipSegments(videoId)
         // A new video started while in the background: keep it at low quality too.
         if (lowQualityActive) webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
@@ -448,6 +485,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         started = true
         wake()
         webView.onResume()
+        webView.settings.loadsImagesAutomatically = true
         if (lowQualityActive) {
             webView.evaluateJavascript(Scripts.RESTORE_QUALITY, null)
             lowQualityActive = false
@@ -466,10 +504,15 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         savePlayback(PlayerBridge.info, force = true)
         if (!enabled) {
             pauseInBackground()
-        } else if (Prefs.isLowQualityInBackground(this)) {
-            // Also runs when the screen turns off: the activity stops then too.
-            webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
-            lowQualityActive = true
+        } else {
+            // Nobody sees the recommendations autoplay keeps loading: skip their thumbnails.
+            // Turning images back on in onStart loads the missing ones.
+            webView.settings.loadsImagesAutomatically = false
+            if (Prefs.isLowQualityInBackground(this)) {
+                // Also runs when the screen turns off: the activity stops then too.
+                webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
+                lowQualityActive = true
+            }
         }
         scheduleIdleSuspend()
         super.onStop()
@@ -485,7 +528,29 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         webView.saveState(outState)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // UI_HIDDEN only means the app went to the background; the others are memory pressure.
+        if (level < TRIM_MEMORY_RUNNING_LOW || level == TRIM_MEMORY_UI_HIDDEN) return
+        savePlayback(PlayerBridge.info, force = true)
+        webView.clearCache(false)
+        // Waiting for the next track risks being killed first when memory is critical.
+        val now = level >= TRIM_MEMORY_RUNNING_CRITICAL && PlayerBridge.info.playing &&
+            SystemClock.elapsedRealtime() - lastFreshLoadAt > FRESH_LOAD_INTERVAL_MS && loadFresh()
+        if (!now) {
+            freshLoadPending = true
+            // Paused in the background: no need to wait the usual minute to put the page to sleep.
+            if (!started && !PlayerBridge.info.playing) {
+                handler.removeCallbacks(suspendIdle)
+                suspendIdle.run()
+            }
+        }
+        val action = if (now) "страница перезагружена" else "страница обновится на следующем треке"
+        Diagnostics.note(this, "мало памяти (уровень $level), $action")
+    }
+
     override fun onDestroy() {
+        Diagnostics.note(this, "экран закрыт: ${if (isFinishing) "пользователем" else "системой"}")
         handler.removeCallbacks(pollState)
         handler.removeCallbacks(suspendIdle)
         PlayerBridge.removeListener(this)
@@ -559,6 +624,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         private const val BRIDGE_STALE_MS = 6000L
         private const val SAVE_INTERVAL_MS = 5000L
         private const val IDLE_SUSPEND_MS = 60_000L
+
+        /** In the background the page is replaced by a fresh one after this many videos. */
+        private const val FRESH_PAGE_VIDEOS = 15
+
+        /** Repeated "memory critical" signals reload the page at most this often. */
+        private const val FRESH_LOAD_INTERVAL_MS = 2 * 60_000L
 
         /** Parses the array built by the page script's state(); null when there is no player. */
         private fun parsePlaybackState(json: String?): PlaybackInfo? {

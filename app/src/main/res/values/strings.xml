@@ -48,6 +48,11 @@
     <string name="settings_tile">Плитка в шторку</string>
     <string name="settings_tile_summary">Переключатель фонового режима в быстрых настройках, как у VPN</string>
     <string name="settings_tile_already">Плитка уже добавлена</string>
+    <string name="settings_diagnostics">Диагностика</string>
+    <string name="settings_crash_log">Журнал сбоев</string>
+    <string name="settings_crash_log_summary">Почему приложение остановилось в прошлый раз</string>
+    <string name="settings_crash_log_empty">Сбоев пока не записано</string>
+    <string name="settings_copy">Копировать</string>
     <string name="settings_about">О приложении</string>
     <string name="settings_version">Версия %1$s</string>
     <string name="settings_open">Настройки</string>
