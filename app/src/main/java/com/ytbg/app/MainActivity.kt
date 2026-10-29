@@ -124,6 +124,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         Diagnostics.installCrashHandler(this)
+        Diagnostics.noteLaunch(this)
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
