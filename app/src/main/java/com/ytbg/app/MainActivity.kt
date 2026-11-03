@@ -14,6 +14,7 @@ import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -71,10 +72,17 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     @Volatile
     private var adBlock = true
     private var ambient = true
+    private var ambientStrength = 0.55f
 
-    /** The header takes on the colour of the video's top edge (ambient lighting). */
-    private val headerGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0))
-    private var glowColor = 0
+    /**
+     * Ambient lighting in the header: the colours of the top of the video from left to right
+     * ([glowTint]), fading in from the plain background at the top ([glowFade]), so the header
+     * runs into the glow on the page below it.
+     */
+    private val glowTint = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, IntArray(3))
+    private val glowFade = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, IntArray(2))
+    private var glowColors = IntArray(3)
+    private var glowSource: IntArray? = null
     private var glowAnimator: ValueAnimator? = null
     private var colorAnimator: ValueAnimator? = null
     private var ringAnimator: ObjectAnimator? = null
@@ -162,9 +170,10 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
         adBlock = Prefs.isAdBlockEnabled(this)
         ambient = Prefs.isAmbientEnabled(this)
-        glowColor = ContextCompat.getColor(this, R.color.header_bg)
-        headerGlow.colors = intArrayOf(glowColor, glowColor)
-        findViewById<View>(R.id.header).background = headerGlow
+        ambientStrength = Prefs.ambientStrength(this)
+        glowColors = IntArray(3) { ContextCompat.getColor(this, R.color.header_bg) }
+        glowTint.colors = glowColors.copyOf()
+        findViewById<View>(R.id.header).background = LayerDrawable(arrayOf(glowTint, glowFade))
         setupWebView()
         findViewById<View>(R.id.settingsButton).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -239,7 +248,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
             override fun onPageFinished(view: WebView, url: String?) {
                 if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock, ambient), null)
-                view.evaluateJavascript(Scripts.visible(started), null)
+                view.evaluateJavascript(Scripts.visible(started) + Scripts.ambientStrength(ambientStrength), null)
             }
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
@@ -369,6 +378,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             if (!ambient) setHeaderGlow(null)
             installPageScript()
             webView.reload()
+        }
+        val newStrength = Prefs.ambientStrength(this)
+        if (newStrength != ambientStrength) {
+            ambientStrength = newStrength
+            webView.evaluateJavascript(Scripts.ambientStrength(ambientStrength), null)
+            setHeaderGlow(glowSource)
         }
         val newSponsor = Prefs.isSponsorBlockEnabled(this) to Prefs.sponsorCategories(this)
         if (newSponsor != sponsorSettings) {
@@ -626,18 +641,25 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         if (!enabled && !started) pauseInBackground()
     }
 
-    /** Tints the header towards [color] (the video's top edge), or back to normal for null. */
-    private fun setHeaderGlow(color: Int?) {
+    /** Tints the header with [colors] (left, middle, right of the video's top), or back to plain for null. */
+    private fun setHeaderGlow(colors: IntArray?) {
+        glowSource = colors
         val base = ContextCompat.getColor(this, R.color.header_bg)
+        val clear = base and 0x00FFFFFF
+        // Plain at the very top, full glow over the lower half.
+        glowFade.colors = intArrayOf(base, clear, clear)
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
-        val target = if (color == null || !night || !ambient) base else ColorUtils.blendARGB(base, color, HEADER_GLOW)
+        val target = IntArray(3) { i ->
+            if (colors == null || !night || !ambient) base else ColorUtils.blendARGB(base, colors[i], ambientStrength)
+        }
+        val from = glowColors.copyOf()
         glowAnimator?.cancel()
-        glowAnimator = ValueAnimator.ofObject(ArgbEvaluator(), glowColor, target).apply {
+        glowAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 500
             addUpdateListener {
-                glowColor = it.animatedValue as Int
-                headerGlow.colors = intArrayOf(base, glowColor)
+                for (i in 0..2) glowColors[i] = ColorUtils.blendARGB(from[i], target[i], it.animatedFraction)
+                glowTint.colors = glowColors.copyOf()
             }
             start()
         }
@@ -650,11 +672,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             parsePlaybackState(json)?.let(PlayerBridge::reportPlayback)
         }
 
-        /** "#rrggbb" along the top edge of the video, or "" when there is no glow. */
+        /** "#rrggbb,#rrggbb,#rrggbb": left, middle and right of the top of the video; "" for no glow. */
         @JavascriptInterface
-        fun onAmbient(color: String) {
+        fun onAmbient(colors: String) {
             val parsed = try {
-                if (color.isEmpty()) null else Color.parseColor(color)
+                colors.split(',').map { Color.parseColor(it.trim()) }.takeIf { it.size == 3 }?.toIntArray()
             } catch (e: IllegalArgumentException) {
                 null
             }
@@ -668,9 +690,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         private const val BRIDGE_STALE_MS = 6000L
         private const val SAVE_INTERVAL_MS = 5000L
         private const val IDLE_SUSPEND_MS = 60_000L
-
-        /** How far the header is tinted towards the video's colour. */
-        private const val HEADER_GLOW = 0.45f
 
         /** In the background the page is replaced by a fresh one after this many videos. */
         private const val FRESH_PAGE_VIDEOS = 15

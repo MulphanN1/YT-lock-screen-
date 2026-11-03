@@ -10,6 +10,7 @@ object Prefs {
     private const val KEY_ENABLED = "background_enabled"
     const val KEY_AD_BLOCK = "ad_block"
     const val KEY_AMBIENT = "ambient"
+    const val KEY_AMBIENT_STRENGTH = "ambient_strength"
     const val KEY_LOW_QUALITY = "low_quality_background"
     const val KEY_RESUME = "resume_playback"
     const val KEY_SPONSOR_BLOCK = "sponsorblock"
@@ -32,6 +33,9 @@ object Prefs {
     fun isAdBlockEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_AD_BLOCK, true)
 
     fun isAmbientEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_AMBIENT, true)
+
+    /** 0..1; the default must match settings.xml. */
+    fun ambientStrength(context: Context): Float = prefs(context).getInt(KEY_AMBIENT_STRENGTH, 55) / 100f
 
     fun isLowQualityInBackground(context: Context): Boolean = prefs(context).getBoolean(KEY_LOW_QUALITY, true)
 

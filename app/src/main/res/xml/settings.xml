@@ -14,6 +14,17 @@
             app:summary="@string/settings_ambient_summary"
             app:title="@string/settings_ambient" />
 
+        <SeekBarPreference
+            android:max="100"
+            app:defaultValue="55"
+            app:dependency="ambient"
+            app:iconSpaceReserved="false"
+            app:key="ambient_strength"
+            app:min="10"
+            app:seekBarIncrement="5"
+            app:showSeekBarValue="true"
+            app:title="@string/settings_ambient_strength" />
+
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:iconSpaceReserved="false"

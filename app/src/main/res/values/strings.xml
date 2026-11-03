@@ -24,6 +24,7 @@
     <string name="settings_playback">Воспроизведение</string>
     <string name="settings_ambient">Подсветка вокруг видео</string>
     <string name="settings_ambient_summary">Размытое свечение цветов видео над плеером и под ним. Работает в тёмной теме</string>
+    <string name="settings_ambient_strength">Яркость подсветки</string>
     <string name="settings_low_quality">Экономия в фоне</string>
     <string name="settings_low_quality_summary">Когда экран выключен или приложение свёрнуто, следующие треки играют в минимальном качестве: меньше трафика и батареи, звук тот же</string>
     <string name="settings_resume">Продолжать с места остановки</string>

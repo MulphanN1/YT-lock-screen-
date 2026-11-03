@@ -8,6 +8,9 @@ object Scripts {
     /** Tells the page whether anyone can see it: the ambient glow does no work while hidden. */
     fun visible(visible: Boolean): String = "window.__ytbgVisible=$visible;"
 
+    /** Ambient glow intensity, 0..1. */
+    fun ambientStrength(strength: Float): String = "window.__ytbgAmbientStrength=$strength;"
+
     /**
      * Injected into every page at document start. Makes the page believe it is always
      * visible (so YouTube does not pause itself) and reports play/pause state to Android.
@@ -167,8 +170,8 @@ object Scripts {
      * Ambient lighting: a blurred copy of the video glows above and below the player, like
      * YouTube's own "ambient mode" on desktop. The frame is drawn into a 16x9 canvas, which
      * scaled up and blurred costs next to nothing; a screen-blended overlay brightens the dark
-     * page around the player without touching YouTube's own layout. The colour along the top
-     * edge goes to Android for the app header. Dark theme only, and only while visible.
+     * page around the player without touching YouTube's own layout. The colours of the top third
+     * (left, middle, right) go to Android for the app header. Dark theme only, only while visible.
      */
     private const val AMBIENT = """
 (function () {
@@ -176,7 +179,7 @@ object Scripts {
   window.__ytbgAmbient = true;
   if (window.__ytbgVisible === undefined) window.__ytbgVisible = true;
 
-  var W = 16, H = 9, BELOW = 200, STRENGTH = '0.55';
+  var W = 16, H = 9, BELOW = 200;
   var box = null, ctx = null, shown = false, lastTime = -1, lastMask = '';
   var dark = false, darkCheckedAt = 0, sent = null;
 
@@ -204,16 +207,24 @@ object Scripts {
     return matchMedia('(prefers-color-scheme: dark)').matches;
   }
 
+  function strength() {
+    var s = window.__ytbgAmbientStrength;
+    return typeof s === 'number' ? s : 0.55;
+  }
+
+  /** rgb: [r, g, b] for the left, middle and right of the top of the frame, or null. */
   function send(rgb) {
     if (sent === rgb) return;
-    if (rgb && sent && Math.max(Math.abs(rgb[0] - sent[0]), Math.abs(rgb[1] - sent[1]),
-        Math.abs(rgb[2] - sent[2])) < 8) return;
+    if (rgb && sent && rgb.every(function (x, i) { return Math.abs(x - sent[i]) < 8; })) return;
     sent = rgb;
-    try {
-      if (window.YTBG) window.YTBG.onAmbient(rgb ? '#' + rgb.map(function (x) {
-        return (256 | x).toString(16).slice(1);
-      }).join('') : '');
-    } catch (e) {}
+    var hex = function (x) { return (256 | x).toString(16).slice(1); };
+    var text = '';
+    if (rgb) {
+      for (var i = 0; i < rgb.length; i += 3) {
+        text += (i ? ',' : '') + '#' + hex(rgb[i]) + hex(rgb[i + 1]) + hex(rgb[i + 2]);
+      }
+    }
+    try { if (window.YTBG) window.YTBG.onAmbient(text); } catch (e) {}
   }
 
   function hide() {
@@ -251,12 +262,19 @@ object Scripts {
       ctx.globalAlpha = shown ? 0.3 : 1;
       try { ctx.drawImage(v, 0, 0, W, H); } catch (e) { return; }
       try {
-        var d = ctx.getImageData(0, 0, W, 1).data, sum = [0, 0, 0];
-        for (var i = 0; i < d.length; i += 4) { sum[0] += d[i]; sum[1] += d[i + 1]; sum[2] += d[i + 2]; }
-        send(sum.map(function (x) { return Math.round(x / W); }));
+        // The top third of the frame, averaged in three columns: what the glow shows up there.
+        var rows = 3, d = ctx.getImageData(0, 0, W, rows).data, sum = [0, 0, 0, 0, 0, 0, 0, 0, 0], n = [0, 0, 0];
+        for (var y = 0; y < rows; y++) {
+          for (var x = 0; x < W; x++) {
+            var p = (y * W + x) * 4, col = Math.min(2, Math.floor(x * 3 / W));
+            sum[col * 3] += d[p]; sum[col * 3 + 1] += d[p + 1]; sum[col * 3 + 2] += d[p + 2]; n[col]++;
+          }
+        }
+        send(sum.map(function (v, i) { return Math.round(v / n[Math.floor(i / 3)]); }));
       } catch (e) {}
     }
-    if (!shown) { box.style.opacity = STRENGTH; shown = true; }
+    var opacity = String(strength());
+    if (!shown || box.style.opacity !== opacity) { box.style.opacity = opacity; shown = true; }
   }, 150);
 })();
 """
