@@ -23,7 +23,7 @@
     <string name="settings_title">Настройки</string>
     <string name="settings_playback">Воспроизведение</string>
     <string name="settings_low_quality">Экономия в фоне</string>
-    <string name="settings_low_quality_summary">Когда экран выключен или приложение свёрнуто, видео переключается на минимальное качество: меньше трафика и батареи, звук тот же</string>
+    <string name="settings_low_quality_summary">Когда экран выключен или приложение свёрнуто, следующие треки играют в минимальном качестве: меньше трафика и батареи, звук тот же</string>
     <string name="settings_resume">Продолжать с места остановки</string>
     <string name="settings_resume_summary">При запуске открывается последний трек с той же секунды</string>
     <string name="settings_skip">Пропуски</string>

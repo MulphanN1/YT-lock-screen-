@@ -69,7 +69,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private var colorAnimator: ValueAnimator? = null
     private var ringAnimator: ObjectAnimator? = null
 
-    /** The page runs at minimum quality while nobody sees it (setting "Экономия в фоне"). */
+    /**
+     * Setting "Экономия в фоне": unseen videos play at minimum quality. Switching quality makes
+     * YouTube rebuffer and the sound stops for a moment, so it is switched only between tracks:
+     * [lowQualityWanted] while in the background, [lowQualityActive] once a track was switched.
+     */
+    private var lowQualityWanted = false
     private var lowQualityActive = false
 
     /** JavaScript timers stopped because the app sat paused in the background. */
@@ -364,8 +369,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             if (loadFresh()) return
         }
         loadSkipSegments(videoId)
-        // A new video started while in the background: keep it at low quality too.
-        if (lowQualityActive) webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
+        // A new video started while in the background: the track boundary hides the rebuffering.
+        if (lowQualityWanted && !started) {
+            webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
+            lowQualityActive = true
+        }
     }
 
     private fun wake() {
@@ -476,6 +484,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         wake()
         webView.onResume()
         webView.settings.loadsImagesAutomatically = true
+        lowQualityWanted = false
         if (lowQualityActive) {
             webView.evaluateJavascript(Scripts.RESTORE_QUALITY, null)
             lowQualityActive = false
@@ -498,11 +507,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             // Nobody sees the recommendations autoplay keeps loading: skip their thumbnails.
             // Turning images back on in onStart loads the missing ones.
             webView.settings.loadsImagesAutomatically = false
-            if (Prefs.isLowQualityInBackground(this)) {
-                // Also runs when the screen turns off: the activity stops then too.
-                webView.evaluateJavascript(Scripts.LOW_QUALITY, null)
-                lowQualityActive = true
-            }
+            // Also when the screen turns off: the activity stops then too.
+            lowQualityWanted = Prefs.isLowQualityInBackground(this)
         }
         scheduleIdleSuspend()
         super.onStop()

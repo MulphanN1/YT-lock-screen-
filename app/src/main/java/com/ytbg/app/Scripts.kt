@@ -218,9 +218,11 @@ object Scripts {
   var p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
   var q = window.__ytbgQuality;
   window.__ytbgQuality = null;
-  if (!p || !q || !p.setPlaybackQualityRange) return;
+  // A page reloaded in the background has no saved quality: go back to automatic.
+  if (!q || q === 'unknown') q = 'auto';
+  if (!p || !p.setPlaybackQualityRange) return;
   try {
-    p.setPlaybackQualityRange(q === 'unknown' ? 'auto' : q, q === 'unknown' ? 'auto' : q);
+    p.setPlaybackQualityRange(q, q);
     if (p.setPlaybackQuality) p.setPlaybackQuality(q);
   } catch (e) {}
 })();
