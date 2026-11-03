@@ -3,6 +3,16 @@
 Android-приложение, в котором YouTube продолжает играть музыку при выключенном экране.
 Включается одной большой кнопкой, как в VPN-приложениях.
 
+**[⬇ Скачать APK](https://github.com/MulphanN1/YT-lock-screen-/releases/latest/download/YT-Fon.apk)** · Android 7.0+
+
+<p>
+<img src="store/screenshots/1-main.jpg" width="19%">
+<img src="store/screenshots/2-player.jpg" width="19%">
+<img src="store/screenshots/3-widget.jpg" width="19%">
+<img src="store/screenshots/4-settings.jpg" width="19%">
+<img src="store/screenshots/5-settings.jpg" width="19%">
+</p>
+
 ## Как пользоваться
 
 1. Откройте приложение: внутри обычный мобильный YouTube (m.youtube.com).
