@@ -44,7 +44,9 @@ jobs:
 
       # Shows in the log which key signed the APK (CN=Android Debug means the public debug key).
       - name: Signing certificate
-        run: keytool -printcert -jarfile YT-Fon.apk | head -n 8
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
+          "$apksigner" verify --print-certs YT-Fon.apk | grep -E "DN|SHA-256"
 
       # Optional: fails when the account's Actions storage quota is full; the release below does not use it.
       - uses: actions/upload-artifact@v4
