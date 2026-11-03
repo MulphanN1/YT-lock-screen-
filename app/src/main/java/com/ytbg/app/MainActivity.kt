@@ -151,16 +151,6 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         powerButton.setOnClickListener { toggle() }
-        powerButton.setOnLongClickListener {
-            val pause = PlayerBridge.lastPause?.let { getString(R.string.last_pause, it) }
-                ?: getString(R.string.no_pauses)
-            val message = pause + "\n" + getString(R.string.audio_status, PlaybackService.audioStatus)
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setMessage(listOfNotNull(message, Diagnostics.report(this)).joinToString("\n\n"))
-                .setPositiveButton(R.string.close, null)
-                .show()
-            true
-        }
 
         PlayerBridge.controller = this
         PlayerBridge.addListener(this)
@@ -519,7 +509,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     }
 
     private fun pauseInBackground() {
-        PlayerBridge.pause("приложение свёрнуто, фоновый режим выключен")
+        PlayerBridge.pause()
         webView.onPause()
     }
 

@@ -51,7 +51,8 @@ Android-приложение, в котором YouTube продолжает и�
 APK собирается автоматически в GitHub Actions:
 
 **Releases** → последняя сборка → `YT-Fon.apk`
-(https://github.com/MulphanN1/YT-lock-screen-/releases/latest). Новая сборка появляется после каждого пуша.
+(https://github.com/MulphanN1/YT-lock-screen-/releases/latest). Сборки из `main` становятся
+последним релизом, сборки из других веток публикуются как тестовые (pre-release).
 
 На телефоне разрешите установку из неизвестных источников для браузера/файлового менеджера.
 Все сборки подписаны одним ключом, поэтому новая версия ставится поверх старой.
@@ -84,7 +85,35 @@ APK собирается автоматически в GitHub Actions:
 ## Сборка вручную
 
 ```
-./gradlew assembleDebug
+./gradlew assembleRelease   # app/build/outputs/apk/release/app-release.apk
+./gradlew bundleRelease     # app/build/outputs/bundle/release/app-release.aab
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`. Нужны JDK 17 и Android SDK 35.
+Нужны JDK 17 и Android SDK 35. Release-сборка сжимается R8 (код и неиспользуемые ресурсы).
+
+## Ключ подписи для магазинов
+
+Без своего ключа release-APK подписывается публичным `app/debug.keystore` из репозитория —
+для магазинов так нельзя: любой может подписать им «обновление». Создайте свой ключ один раз
+и храните его копию отдельно — без него приложение в магазине больше не обновить:
+
+```
+keytool -genkeypair -v -keystore release.jks -alias ytfon -keyalg RSA -keysize 4096 -validity 36500
+```
+
+- **Локально:** положите `release.jks` в корень проекта и создайте рядом `keystore.properties`
+  (оба файла в `.gitignore`):
+  ```
+  storeFile=release.jks
+  storePassword=...
+  keyAlias=ytfon
+  keyPassword=...
+  ```
+- **В GitHub Actions:** Settings → Secrets and variables → Actions → добавьте
+  `RELEASE_KEYSTORE_BASE64` (вывод `base64 -w0 release.jks`), `RELEASE_STORE_PASSWORD`,
+  `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
+
+После смены ключа уже установленную версию придётся один раз удалить: Android не ставит
+APK с другой подписью поверх старого.
+
+Политика конфиденциальности для страницы в магазине: [PRIVACY.md](PRIVACY.md).

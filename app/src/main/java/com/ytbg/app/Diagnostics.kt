@@ -9,7 +9,7 @@ import java.util.Date
 
 /**
  * Traces why the app disappeared. It survives the process dying, so the reason can be read
- * on the next launch (long press on the power button).
+ * on the next launch (Settings → Журнал сбоев).
  */
 object Diagnostics {
     private const val KEY_EVENT = "diag_event"

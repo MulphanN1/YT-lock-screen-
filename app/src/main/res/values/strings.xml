@@ -1,32 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">YT Фон</string>
-    <string name="mode_title">Фоновое воспроизведение</string>
-    <string name="mode_off">Выключено. Нажмите кнопку, чтобы музыка играла при выключенном экране</string>
-    <string name="mode_on">Включено: можно выключать экран</string>
+    <string name="mode_title">Фоновый режим</string>
+    <string name="mode_off">Выключен: в фоне музыка встанет на паузу</string>
+    <string name="mode_on">Включён: можно выключать экран</string>
     <string name="now_playing">Сейчас: %1$s</string>
     <string name="power_button">Включить или выключить фоновое воспроизведение</string>
     <string name="channel_name">Плеер</string>
     <string name="notif_title_default">YouTube</string>
     <string name="action_play">Играть</string>
     <string name="action_pause">Пауза</string>
-    <string name="action_stop">Выключить</string>
     <string name="action_close">Закрыть</string>
     <string name="action_next">Следующий</string>
     <string name="action_previous">Предыдущий</string>
 
     <string name="tile_background">YT Фон</string>
-    <string name="chip_tiles">Плитка в шторку</string>
-    <string name="chip_ad_block">Без рекламы</string>
 
     <string name="tiles_dialog_title">Плитка в шторке</string>
     <string name="tiles_dialog_text">Опустите шторку полностью, нажмите карандаш («Изменить») и перетащите плитку «YT Фон» в быстрые настройки.</string>
-    <string name="ad_block_on">Реклама блокируется</string>
-    <string name="ad_block_off">Блокировка рекламы выключена</string>
     <string name="close">Закрыть</string>
-    <string name="last_pause">Последняя пауза: %1$s</string>
-    <string name="no_pauses">Пауз пока не было</string>
-    <string name="audio_status">Звук: %1$s</string>
 
     <string name="settings_title">Настройки</string>
     <string name="settings_playback">Воспроизведение</string>
@@ -55,6 +47,8 @@
     <string name="settings_copy">Копировать</string>
     <string name="settings_about">О приложении</string>
     <string name="settings_version">Версия %1$s</string>
+    <string name="settings_privacy">Политика конфиденциальности</string>
+    <string name="settings_source">Исходный код</string>
     <string name="settings_open">Настройки</string>
     <string name="widget_description">Плеер YT Фон</string>
     <string name="widget_idle_title">YT Фон</string>
