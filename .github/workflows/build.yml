@@ -42,6 +42,10 @@ jobs:
           cp app/build/outputs/apk/release/app-release.apk YT-Fon.apk
           cp app/build/outputs/bundle/release/app-release.aab YT-Fon.aab
 
+      # Shows in the log which key signed the APK (CN=Android Debug means the public debug key).
+      - name: Signing certificate
+        run: keytool -printcert -jarfile YT-Fon.apk | head -n 8
+
       # Optional: fails when the account's Actions storage quota is full; the release below does not use it.
       - uses: actions/upload-artifact@v4
         continue-on-error: true
