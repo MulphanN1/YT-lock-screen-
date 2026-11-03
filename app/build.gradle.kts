@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -8,7 +9,7 @@ plugins {
 // Release key: from environment variables (CI secrets) or a local, untracked keystore.properties.
 val releaseKey: Map<String, String> = run {
     val file = rootProject.file("keystore.properties")
-    val local = java.util.Properties().apply { if (file.exists()) file.inputStream().use(::load) }
+    val local = Properties().apply { if (file.exists()) file.inputStream().use { load(it) } }
     mapOf(
         "storeFile" to "RELEASE_STORE_FILE",
         "storePassword" to "RELEASE_STORE_PASSWORD",
