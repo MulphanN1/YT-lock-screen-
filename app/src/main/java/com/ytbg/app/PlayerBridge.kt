@@ -3,7 +3,6 @@ package com.ytbg.app
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import android.text.format.DateFormat
 
 /** What the page's player is doing right now, as reported by [Scripts]. */
 data class PlaybackInfo(
@@ -60,20 +59,14 @@ object PlayerBridge {
     var info = PlaybackInfo()
         private set
 
-    /** Who paused playback last and when; shown on a long press of the power button. */
-    var lastPause: String? = null
-        private set
-
     /** True when the last pause did not come from any of our own commands. */
     var lastPauseByPage = false
         private set
 
-    private var lastCommand: String? = null
     private var lastCommandAt = 0L
 
-    /** Pauses the player and remembers [source] so an unexpected pause can be traced. */
-    fun pause(source: String) {
-        lastCommand = source
+    /** Pauses the player, remembering that this pause was ours and not the page's. */
+    fun pause() {
         lastCommandAt = SystemClock.elapsedRealtime()
         controller?.pause()
     }
@@ -94,10 +87,7 @@ object PlayerBridge {
         main.post {
             if (newInfo.sameTrackAndState(info)) return@post
             if (info.playing && !newInfo.playing) {
-                val recent = SystemClock.elapsedRealtime() - lastCommandAt < COMMAND_WINDOW_MS
-                lastPauseByPage = !recent
-                val source = if (recent) lastCommand else "сама страница YouTube"
-                lastPause = "$source, ${DateFormat.format("HH:mm:ss", System.currentTimeMillis())}"
+                lastPauseByPage = SystemClock.elapsedRealtime() - lastCommandAt >= COMMAND_WINDOW_MS
             }
             info = newInfo
             listeners.toList().forEach { it.onPlaybackChanged(newInfo) }

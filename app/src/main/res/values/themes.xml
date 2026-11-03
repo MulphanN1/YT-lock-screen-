@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Everything accented in the app's red, not Material's default purple. -->
     <style name="Theme.YtBg" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/power_on</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondary">@color/power_on</item>
+        <item name="colorSecondaryContainer">@color/primary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_primary_container</item>
+        <item name="colorAccent">@color/power_on</item>
+        <item name="android:colorAccent">@color/power_on</item>
+        <item name="colorControlActivated">@color/power_on</item>
         <item name="android:windowBackground">@color/header_bg</item>
     </style>
 </resources>

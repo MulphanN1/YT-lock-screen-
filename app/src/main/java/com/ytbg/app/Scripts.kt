@@ -2,7 +2,14 @@ package com.ytbg.app
 
 object Scripts {
 
-    fun page(adBlock: Boolean): String = if (adBlock) PAGE + AD_BLOCK else PAGE
+    fun page(adBlock: Boolean, ambient: Boolean): String =
+        PAGE + (if (adBlock) AD_BLOCK else "") + (if (ambient) AMBIENT else "")
+
+    /** Tells the page whether anyone can see it: the ambient glow does no work while hidden. */
+    fun visible(visible: Boolean): String = "window.__ytbgVisible=$visible;"
+
+    /** Ambient glow intensity, 0..1. */
+    fun ambientStrength(strength: Float): String = "window.__ytbgAmbientStrength=$strength;"
 
     /**
      * Injected into every page at document start. Makes the page believe it is always
@@ -159,6 +166,119 @@ object Scripts {
 })();
 """
 
+    /**
+     * Ambient lighting: a blurred copy of the video glows above and below the player, like
+     * YouTube's own "ambient mode" on desktop. The frame is drawn into a 16x9 canvas, which
+     * scaled up and blurred costs next to nothing; a screen-blended overlay brightens the dark
+     * page around the player without touching YouTube's own layout. The colours of the top third
+     * (left, middle, right) go to Android for the app header. Dark theme only, only while visible.
+     */
+    private const val AMBIENT = """
+(function () {
+  if (window.__ytbgAmbient) return;
+  window.__ytbgAmbient = true;
+  if (window.__ytbgVisible === undefined) window.__ytbgVisible = true;
+
+  var W = 16, H = 9, BELOW = 200;
+  var box = null, ctx = null, shown = false, lastTime = -1, lastMask = '';
+  var dark = false, darkCheckedAt = 0, sent = null;
+
+  function create() {
+    box = document.createElement('div');
+    box.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:0;pointer-events:none;' +
+      'z-index:2147483000;mix-blend-mode:screen;opacity:0;transition:opacity .6s;overflow:hidden';
+    var canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.cssText = 'display:block;width:100%;height:100%;filter:blur(24px) saturate(1.5);transform:scale(1.25)';
+    box.appendChild(canvas);
+    document.documentElement.appendChild(box);
+    ctx = canvas.getContext('2d', { willReadFrequently: true });
+  }
+
+  function pageIsDark() {
+    var els = [document.querySelector('ytm-app'), document.body, document.documentElement];
+    for (var i = 0; i < els.length; i++) {
+      if (!els[i]) continue;
+      var c = (getComputedStyle(els[i]).backgroundColor.match(/[\d.]+/g) || []).map(Number);
+      if (c.length < 3 || (c.length > 3 && c[3] === 0)) continue;
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] < 90;
+    }
+    return matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+
+  function strength() {
+    var s = window.__ytbgAmbientStrength;
+    return typeof s === 'number' ? s : 0.55;
+  }
+
+  /** rgb: [r, g, b] for the left, middle and right of the top of the frame, or null. */
+  function send(rgb) {
+    if (sent === rgb) return;
+    if (rgb && sent && rgb.every(function (x, i) { return Math.abs(x - sent[i]) < 8; })) return;
+    sent = rgb;
+    var hex = function (x) { return (256 | x).toString(16).slice(1); };
+    var text = '';
+    if (rgb) {
+      for (var i = 0; i < rgb.length; i += 3) {
+        text += (i ? ',' : '') + '#' + hex(rgb[i]) + hex(rgb[i + 1]) + hex(rgb[i + 2]);
+      }
+    }
+    try { if (window.YTBG) window.YTBG.onAmbient(text); } catch (e) {}
+  }
+
+  function hide() {
+    if (shown) { box.style.opacity = '0'; shown = false; }
+    lastTime = -1;
+    send(null);
+  }
+
+  setInterval(function () {
+    if (!window.__ytbgVisible) return;
+    if (location.pathname.indexOf('/watch') !== 0 || document.fullscreenElement) return hide();
+    var v = document.querySelector('.html5-video-player video') || document.querySelector('video');
+    if (!v || v.readyState < 2 || !v.videoWidth) return hide();
+    var now = Date.now();
+    if (now - darkCheckedAt > 2000) { dark = pageIsDark(); darkCheckedAt = now; }
+    if (!dark) return hide();
+    var r = (v.closest('.html5-video-player') || v).getBoundingClientRect();
+    if (r.bottom <= 0 || r.height < 50) return hide();
+    if (!box) create();
+
+    // Glow everywhere above the player, then fading out below it; never over the video.
+    var top = Math.max(0, Math.round(r.top)), bottom = Math.round(r.bottom);
+    var mask = 'linear-gradient(to bottom,#000 0,#000 ' + top + 'px,transparent ' + top + 'px,transparent ' +
+      bottom + 'px,#000 ' + bottom + 'px,transparent ' + (bottom + BELOW) + 'px)';
+    if (mask !== lastMask) {
+      lastMask = mask;
+      box.style.height = (bottom + BELOW) + 'px';
+      box.style.webkitMaskImage = mask;
+      box.style.maskImage = mask;
+    }
+
+    if (v.currentTime !== lastTime) {
+      lastTime = v.currentTime;
+      // Blend into the previous frames so the light drifts instead of flickering.
+      ctx.globalAlpha = shown ? 0.3 : 1;
+      try { ctx.drawImage(v, 0, 0, W, H); } catch (e) { return; }
+      try {
+        // The top third of the frame, averaged in three columns: what the glow shows up there.
+        var rows = 3, d = ctx.getImageData(0, 0, W, rows).data, sum = [0, 0, 0, 0, 0, 0, 0, 0, 0], n = [0, 0, 0];
+        for (var y = 0; y < rows; y++) {
+          for (var x = 0; x < W; x++) {
+            var p = (y * W + x) * 4, col = Math.min(2, Math.floor(x * 3 / W));
+            sum[col * 3] += d[p]; sum[col * 3 + 1] += d[p + 1]; sum[col * 3 + 2] += d[p + 2]; n[col]++;
+          }
+        }
+        send(sum.map(function (v, i) { return Math.round(v / n[Math.floor(i / 3)]); }));
+      } catch (e) {}
+    }
+    var opacity = String(strength());
+    if (!shown || box.style.opacity !== opacity) { box.style.opacity = opacity; shown = true; }
+  }, 150);
+})();
+"""
+
     /** Player "next" button, else the next playlist item, else the first recommended video. */
     const val NEXT = """
 (function () {
@@ -218,9 +338,11 @@ object Scripts {
   var p = document.getElementById('movie_player') || document.querySelector('.html5-video-player');
   var q = window.__ytbgQuality;
   window.__ytbgQuality = null;
-  if (!p || !q || !p.setPlaybackQualityRange) return;
+  // A page reloaded in the background has no saved quality: go back to automatic.
+  if (!q || q === 'unknown') q = 'auto';
+  if (!p || !p.setPlaybackQualityRange) return;
   try {
-    p.setPlaybackQualityRange(q === 'unknown' ? 'auto' : q, q === 'unknown' ? 'auto' : q);
+    p.setPlaybackQualityRange(q, q);
     if (p.setPlaybackQuality) p.setPlaybackQuality(q);
   } catch (e) {}
 })();

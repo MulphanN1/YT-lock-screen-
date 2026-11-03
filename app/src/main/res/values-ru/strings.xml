@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">YT Фон</string>
+    <string name="mode_title">Фоновый режим</string>
+    <string name="mode_off">Выключен: в фоне музыка встанет на паузу</string>
+    <string name="mode_on">Включён: можно выключать экран</string>
+    <string name="now_playing">Сейчас: %1$s</string>
+    <string name="power_button">Включить или выключить фоновое воспроизведение</string>
+    <string name="channel_name">Плеер</string>
+    <string name="action_play">Играть</string>
+    <string name="action_pause">Пауза</string>
+    <string name="action_close">Закрыть</string>
+    <string name="action_next">Следующий</string>
+    <string name="action_previous">Предыдущий</string>
+
+    <string name="tile_background">YT Фон</string>
+
+    <string name="tiles_dialog_title">Плитка в шторке</string>
+    <string name="tiles_dialog_text">Опустите шторку полностью, нажмите карандаш («Изменить») и перетащите плитку «YT Фон» в быстрые настройки.</string>
+    <string name="close">Закрыть</string>
+
+    <string name="settings_title">Настройки</string>
+    <string name="settings_playback">Воспроизведение</string>
+    <string name="settings_ambient">Подсветка вокруг видео</string>
+    <string name="settings_ambient_summary">Размытое свечение цветов видео над плеером и под ним. Работает в тёмной теме</string>
+    <string name="settings_ambient_strength">Яркость подсветки</string>
+    <string name="settings_low_quality">Экономия в фоне</string>
+    <string name="settings_low_quality_summary">Когда экран выключен или приложение свёрнуто, следующие треки играют в минимальном качестве: меньше трафика и батареи, звук тот же</string>
+    <string name="settings_resume">Продолжать с места остановки</string>
+    <string name="settings_resume_summary">При запуске открывается последний трек с той же секунды</string>
+    <string name="settings_skip">Пропуски</string>
+    <string name="settings_sponsorblock">Пропускать лишнее (SponsorBlock)</string>
+    <string name="settings_sponsorblock_summary">Сам перематывает разговоры в клипах, рекламу спонсоров и другое по базе SponsorBlock</string>
+    <string name="settings_sponsorblock_categories">Что пропускать</string>
+    <string name="settings_nothing_selected">Ничего не выбрано</string>
+    <string name="settings_ad_block">Блокировать рекламу</string>
+    <string name="settings_ad_block_summary">Баннеры скрываются, рекламные ролики перематываются без звука</string>
+    <string name="settings_quick_access">Быстрый доступ</string>
+    <string name="settings_widget">Виджет на главный экран</string>
+    <string name="settings_widget_summary">Плеер с обложкой и кнопками на рабочем столе</string>
+    <string name="settings_widget_manual">Зажмите пустое место на рабочем столе → «Виджеты» → «YT Фон».</string>
+    <string name="settings_tile">Плитка в шторку</string>
+    <string name="settings_tile_summary">Переключатель фонового режима в быстрых настройках, как у VPN</string>
+    <string name="settings_tile_already">Плитка уже добавлена</string>
+    <string name="settings_diagnostics">Диагностика</string>
+    <string name="settings_crash_log">Журнал сбоев</string>
+    <string name="settings_crash_log_summary">Почему приложение остановилось в прошлый раз</string>
+    <string name="settings_crash_log_empty">Сбоев пока не записано</string>
+    <string name="settings_copy">Копировать</string>
+    <string name="settings_about">О приложении</string>
+    <string name="settings_version">Версия %1$s</string>
+    <string name="settings_privacy">Политика конфиденциальности</string>
+    <string name="settings_source">Исходный код</string>
+    <string name="settings_open">Настройки</string>
+    <string name="widget_description">Плеер YT Фон</string>
+    <string name="widget_idle_title">YT Фон</string>
+    <string name="widget_idle_text">Нажмите, чтобы открыть</string>
+    <string name="signin_channel">Вход в аккаунт</string>
+    <string name="signin_done_title">Вход выполнен</string>
+    <string name="signin_done_text">Нажмите, чтобы вернуться в YT Фон</string>
+
+    <string name="diag_crash">Сбой: %1$s</string>
+    <string name="diag_event">Событие: %1$s</string>
+    <string name="diag_process">Процесс: %1$s</string>
+    <string name="diag_renderer_crashed">процесс страницы упал</string>
+    <string name="diag_renderer_killed">процесс страницы убит системой</string>
+    <string name="diag_low_memory_reloaded">мало памяти (уровень %1$d), страница перезагружена</string>
+    <string name="diag_low_memory_pending">мало памяти (уровень %1$d), страница обновится на следующем треке</string>
+    <string name="diag_closed_user">экран закрыт пользователем</string>
+    <string name="diag_closed_system">экран закрыт системой</string>
+    <string name="exit_self">приложение закрылось само</string>
+    <string name="exit_signaled">убито сигналом</string>
+    <string name="exit_low_memory">нехватка памяти</string>
+    <string name="exit_crash">сбой (Java)</string>
+    <string name="exit_crash_native">сбой (нативный)</string>
+    <string name="exit_anr">приложение зависло</string>
+    <string name="exit_init_failure">ошибка запуска</string>
+    <string name="exit_permission_change">смена разрешений</string>
+    <string name="exit_excessive_resources">слишком много ресурсов</string>
+    <string name="exit_user_requested">остановлено пользователем</string>
+    <string name="exit_user_stopped">остановлено пользователем (пользователь ОС)</string>
+    <string name="exit_dependency_died">умерла зависимость</string>
+    <string name="exit_other">другая причина (система)</string>
+    <string name="exit_code">код %1$d</string>
+</resources>

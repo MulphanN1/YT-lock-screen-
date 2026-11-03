@@ -105,7 +105,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
                 }
 
                 override fun onPause() {
-                    PlayerBridge.pause("система (команда паузы)")
+                    PlayerBridge.pause()
                 }
 
                 override fun onSkipToNext() {
@@ -121,7 +121,7 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
                 }
 
                 override fun onStop() {
-                    close("система (команда стоп)")
+                    close()
                 }
             })
             setSessionActivity(openAppIntent())
@@ -162,11 +162,11 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             // Headset / watch / control-panel buttons, routed to the session callback above.
             Intent.ACTION_MEDIA_BUTTON -> MediaButtonReceiver.handleIntent(session, intent)
             ACTION_PLAY -> PlayerBridge.controller?.play()
-            ACTION_PAUSE -> PlayerBridge.pause("кнопка в уведомлении")
+            ACTION_PAUSE -> PlayerBridge.pause()
             ACTION_NEXT -> PlayerBridge.controller?.next()
             ACTION_PREVIOUS -> PlayerBridge.controller?.previous()
             ACTION_CLOSE -> {
-                close("кнопка «×» в уведомлении")
+                close()
                 return START_NOT_STICKY
             }
             ACTION_DISMISS -> {
@@ -222,8 +222,8 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
     }
 
     /** The "×" button: pause and hide the player. It comes back on the next play. */
-    private fun close(source: String) {
-        PlayerBridge.pause(source)
+    private fun close() {
+        PlayerBridge.pause()
         abandonAudioFocus()
         hide()
     }
@@ -298,7 +298,6 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             now - focusRequestedAt < FOCUS_GUARD_MS
         ) {
             focusConflict = true
-            audioStatus = "отключено: встроенный плеер сам управляет звуком"
             abandonAudioFocus()
             PlayerBridge.controller?.play()
         }
@@ -307,7 +306,6 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             focusRequestedAt = now
             hasFocus = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest) ==
                 AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-            audioStatus = if (hasFocus) "занят приложением" else "система отказала"
         }
     }
 
@@ -315,7 +313,6 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
         when (change) {
             AudioManager.AUDIOFOCUS_GAIN -> {
                 hasFocus = true
-                audioStatus = "занят приложением"
                 if (resumeOnFocusGain) PlayerBridge.controller?.play()
                 resumeOnFocusGain = false
             }
@@ -323,21 +320,19 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                 if (PlayerBridge.info.playing) {
                     resumeOnFocusGain = true
-                    PlayerBridge.pause("звонок или голосовой помощник")
+                    PlayerBridge.pause()
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 hasFocus = false
-                audioStatus = "забрало другое приложение"
                 resumeOnFocusGain = false
                 val lostAt = SystemClock.elapsedRealtime()
                 main.postDelayed({
                     if (abs(playStartedAt - lostAt) < FOCUS_GUARD_MS) {
                         // Lost exactly when our own video started: that was the WebView.
                         focusConflict = true
-                        audioStatus = "отключено: встроенный плеер сам управляет звуком"
                     } else if (PlayerBridge.info.playing) {
-                        PlayerBridge.pause("другое приложение начало играть")
+                        PlayerBridge.pause()
                     }
                 }, FOCUS_GUARD_MS)
             }
@@ -613,10 +608,6 @@ class PlaybackService : MediaBrowserServiceCompat(), PlayerBridge.Listener {
 
         /** True while the player notification is up (the service may also run just bound). */
         var isShowing = false
-            private set
-
-        /** Audio focus state in words, for the diagnostics on a long press of the power button. */
-        var audioStatus = "ещё не запрашивался"
             private set
 
         /** Set once the WebView turns out to manage audio focus itself; lasts for the process. */
