@@ -10,6 +10,13 @@
         <SwitchPreferenceCompat
             app:defaultValue="true"
             app:iconSpaceReserved="false"
+            app:key="ambient"
+            app:summary="@string/settings_ambient_summary"
+            app:title="@string/settings_ambient" />
+
+        <SwitchPreferenceCompat
+            app:defaultValue="true"
+            app:iconSpaceReserved="false"
             app:key="low_quality_background"
             app:summary="@string/settings_low_quality_summary"
             app:title="@string/settings_low_quality" />

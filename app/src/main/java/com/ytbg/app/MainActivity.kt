@@ -10,7 +10,10 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -36,6 +39,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -66,6 +70,12 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     // Read from the WebView network thread in shouldInterceptRequest.
     @Volatile
     private var adBlock = true
+    private var ambient = true
+
+    /** The header takes on the colour of the video's top edge (ambient lighting). */
+    private val headerGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0))
+    private var glowColor = 0
+    private var glowAnimator: ValueAnimator? = null
     private var colorAnimator: ValueAnimator? = null
     private var ringAnimator: ObjectAnimator? = null
 
@@ -151,6 +161,10 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         }
 
         adBlock = Prefs.isAdBlockEnabled(this)
+        ambient = Prefs.isAmbientEnabled(this)
+        glowColor = ContextCompat.getColor(this, R.color.header_bg)
+        headerGlow.colors = intArrayOf(glowColor, glowColor)
+        findViewById<View>(R.id.header).background = headerGlow
         setupWebView()
         findViewById<View>(R.id.settingsButton).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -210,7 +224,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 handleExternalUrl(request.url)
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock), null)
+                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock, ambient), null)
                 // A fresh page has lost the skip segments: load them again for the next video.
                 lastVideoId = null
                 videosSinceLoad = 0
@@ -224,7 +238,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
-                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock), null)
+                if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock, ambient), null)
+                view.evaluateJavascript(Scripts.visible(started), null)
             }
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
@@ -267,7 +282,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private fun installPageScript() {
         if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         pageScript?.remove()
-        pageScript = WebViewCompat.addDocumentStartJavaScript(webView, Scripts.page(adBlock), setOf("*"))
+        pageScript = WebViewCompat.addDocumentStartJavaScript(webView, Scripts.page(adBlock, ambient), setOf("*"))
         injectOnPageLoad = false
     }
 
@@ -347,8 +362,11 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     /** Picks up changes made on the settings screen. */
     private fun applySettings() {
         val newAdBlock = Prefs.isAdBlockEnabled(this)
-        if (newAdBlock != adBlock) {
+        val newAmbient = Prefs.isAmbientEnabled(this)
+        if (newAdBlock != adBlock || newAmbient != ambient) {
             adBlock = newAdBlock
+            ambient = newAmbient
+            if (!ambient) setHeaderGlow(null)
             installPageScript()
             webView.reload()
         }
@@ -484,6 +502,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         wake()
         webView.onResume()
         webView.settings.loadsImagesAutomatically = true
+        webView.evaluateJavascript(Scripts.visible(true), null)
         lowQualityWanted = false
         if (lowQualityActive) {
             webView.evaluateJavascript(Scripts.RESTORE_QUALITY, null)
@@ -500,6 +519,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     override fun onStop() {
         started = false
+        webView.evaluateJavascript(Scripts.visible(false), null)
         savePlayback(PlayerBridge.info, force = true)
         if (!enabled) {
             pauseInBackground()
@@ -606,11 +626,39 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         if (!enabled && !started) pauseInBackground()
     }
 
+    /** Tints the header towards [color] (the video's top edge), or back to normal for null. */
+    private fun setHeaderGlow(color: Int?) {
+        val base = ContextCompat.getColor(this, R.color.header_bg)
+        val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        val target = if (color == null || !night || !ambient) base else ColorUtils.blendARGB(base, color, HEADER_GLOW)
+        glowAnimator?.cancel()
+        glowAnimator = ValueAnimator.ofObject(ArgbEvaluator(), glowColor, target).apply {
+            duration = 500
+            addUpdateListener {
+                glowColor = it.animatedValue as Int
+                headerGlow.colors = intArrayOf(base, glowColor)
+            }
+            start()
+        }
+    }
+
     private inner class JsBridge {
         @JavascriptInterface
         fun onState(json: String) {
             lastBridgeReportAt = SystemClock.elapsedRealtime()
             parsePlaybackState(json)?.let(PlayerBridge::reportPlayback)
+        }
+
+        /** "#rrggbb" along the top edge of the video, or "" when there is no glow. */
+        @JavascriptInterface
+        fun onAmbient(color: String) {
+            val parsed = try {
+                if (color.isEmpty()) null else Color.parseColor(color)
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+            handler.post { if (!isDestroyed) setHeaderGlow(parsed) }
         }
     }
 
@@ -620,6 +668,9 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         private const val BRIDGE_STALE_MS = 6000L
         private const val SAVE_INTERVAL_MS = 5000L
         private const val IDLE_SUSPEND_MS = 60_000L
+
+        /** How far the header is tinted towards the video's colour. */
+        private const val HEADER_GLOW = 0.45f
 
         /** In the background the page is replaced by a fresh one after this many videos. */
         private const val FRESH_PAGE_VIDEOS = 15
