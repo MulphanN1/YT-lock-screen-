@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- SponsorBlock category ids: https://wiki.sponsor.ajay.app/w/Segment_Categories -->
-    <string-array name="sponsor_categories_values">
+    <string-array name="sponsor_categories_values" translatable="false">
         <item>music_offtopic</item>
         <item>sponsor</item>
         <item>selfpromo</item>
@@ -12,17 +12,17 @@
         <item>filler</item>
     </string-array>
     <string-array name="sponsor_categories_names">
-        <item>Немузыкальные части в клипах</item>
-        <item>Реклама спонсоров</item>
-        <item>Самореклама автора</item>
-        <item>«Подпишитесь, поставьте лайк»</item>
-        <item>Заставки и интро</item>
-        <item>Концовки и титры</item>
-        <item>Превью «в этом видео»</item>
-        <item>Отступления не по теме</item>
+        <item>Non-music parts of music videos</item>
+        <item>Sponsor reads</item>
+        <item>Self-promotion</item>
+        <item>“Like and subscribe” reminders</item>
+        <item>Intros</item>
+        <item>Outros and credits</item>
+        <item>Previews and recaps</item>
+        <item>Off-topic tangents</item>
     </string-array>
     <!-- Keep in sync with Prefs.DEFAULT_SPONSOR_CATEGORIES. -->
-    <string-array name="sponsor_categories_default">
+    <string-array name="sponsor_categories_default" translatable="false">
         <item>music_offtopic</item>
         <item>sponsor</item>
         <item>selfpromo</item>

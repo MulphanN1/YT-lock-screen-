@@ -47,7 +47,7 @@ private fun TileService.openApp() {
     }
 }
 
-/** "YT Фон": background playback inside the app's own player. */
+/** Background playback inside the app's own player. */
 class BackgroundTileService : TileService() {
 
     override fun onStartListening() {

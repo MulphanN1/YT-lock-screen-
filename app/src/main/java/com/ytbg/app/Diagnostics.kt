@@ -9,7 +9,7 @@ import java.util.Date
 
 /**
  * Traces why the app disappeared. It survives the process dying, so the reason can be read
- * on the next launch (Settings → Журнал сбоев).
+ * on the next launch (Settings → Crash log).
  */
 object Diagnostics {
     private const val KEY_EVENT = "diag_event"
@@ -42,9 +42,9 @@ object Diagnostics {
     fun report(context: Context): String? {
         val prefs = context.getSharedPreferences(Prefs.FILE, Context.MODE_PRIVATE)
         val lines = listOfNotNull(
-            prefs.getString(KEY_CRASH, null)?.let { "Сбой: $it" },
-            prefs.getString(KEY_EVENT, null)?.let { "Событие: $it" },
-            lastProcessExit(context)?.let { "Процесс: $it" },
+            prefs.getString(KEY_CRASH, null)?.let { context.getString(R.string.diag_crash, it) },
+            prefs.getString(KEY_EVENT, null)?.let { context.getString(R.string.diag_event, it) },
+            lastProcessExit(context)?.let { context.getString(R.string.diag_process, it) },
         )
         return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
@@ -54,25 +54,25 @@ object Diagnostics {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val manager = context.getSystemService(ActivityManager::class.java) ?: return null
         val exit = manager.getHistoricalProcessExitReasons(context.packageName, 0, 1).firstOrNull() ?: return null
-        return "${time(exit.timestamp)} ${reasonName(exit.reason)}" +
+        return "${time(exit.timestamp)} ${reasonName(context, exit.reason)}" +
             (exit.description?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
     }
 
-    private fun reasonName(reason: Int): String = when (reason) {
-        ApplicationExitInfo.REASON_EXIT_SELF -> "приложение закрылось само"
-        ApplicationExitInfo.REASON_SIGNALED -> "убито сигналом"
-        ApplicationExitInfo.REASON_LOW_MEMORY -> "нехватка памяти"
-        ApplicationExitInfo.REASON_CRASH -> "сбой (Java)"
-        ApplicationExitInfo.REASON_CRASH_NATIVE -> "сбой (нативный)"
-        ApplicationExitInfo.REASON_ANR -> "приложение зависло"
-        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "ошибка запуска"
-        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "смена разрешений"
-        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "слишком много ресурсов"
-        ApplicationExitInfo.REASON_USER_REQUESTED -> "остановлено пользователем"
-        ApplicationExitInfo.REASON_USER_STOPPED -> "остановлено пользователем (пользователь ОС)"
-        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "умерла зависимость"
-        ApplicationExitInfo.REASON_OTHER -> "другая причина (система)"
-        else -> "код $reason"
+    private fun reasonName(context: Context, reason: Int): String = when (reason) {
+        ApplicationExitInfo.REASON_EXIT_SELF -> context.getString(R.string.exit_self)
+        ApplicationExitInfo.REASON_SIGNALED -> context.getString(R.string.exit_signaled)
+        ApplicationExitInfo.REASON_LOW_MEMORY -> context.getString(R.string.exit_low_memory)
+        ApplicationExitInfo.REASON_CRASH -> context.getString(R.string.exit_crash)
+        ApplicationExitInfo.REASON_CRASH_NATIVE -> context.getString(R.string.exit_crash_native)
+        ApplicationExitInfo.REASON_ANR -> context.getString(R.string.exit_anr)
+        ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> context.getString(R.string.exit_init_failure)
+        ApplicationExitInfo.REASON_PERMISSION_CHANGE -> context.getString(R.string.exit_permission_change)
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> context.getString(R.string.exit_excessive_resources)
+        ApplicationExitInfo.REASON_USER_REQUESTED -> context.getString(R.string.exit_user_requested)
+        ApplicationExitInfo.REASON_USER_STOPPED -> context.getString(R.string.exit_user_stopped)
+        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> context.getString(R.string.exit_dependency_died)
+        ApplicationExitInfo.REASON_OTHER -> context.getString(R.string.exit_other)
+        else -> context.getString(R.string.exit_code, reason)
     }
 
     private fun time(millis: Long): String =

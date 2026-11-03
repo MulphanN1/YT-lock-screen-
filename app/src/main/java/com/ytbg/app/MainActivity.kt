@@ -6,6 +6,9 @@ import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -39,6 +42,8 @@ import androidx.activity.addCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.ViewCompat
@@ -88,7 +93,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     private var ringAnimator: ObjectAnimator? = null
 
     /**
-     * Setting "Экономия в фоне": unseen videos play at minimum quality. Switching quality makes
+     * Setting "Save data in the background": unseen videos play at minimum quality. Switching quality makes
      * YouTube rebuffer and the sound stops for a moment, so it is switched only between tracks:
      * [lowQualityWanted] while in the background, [lowQualityActive] once a track was switched.
      */
@@ -130,12 +135,19 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     /** Paused in the background for a while: stop the heavy YouTube page from running. */
     private val suspendIdle = Runnable {
-        if (!started && !PlayerBridge.info.playing && !suspended) {
+        if (!started && !PlayerBridge.info.playing && !suspended && !signingIn) {
             webView.onPause()
             webView.pauseTimers()
             suspended = true
         }
     }
+
+    /**
+     * The page is on Google's sign-in. The 2-step confirmation takes the user to another app or
+     * the browser, and the sign-in finishes here in the background: keep the page running, and
+     * tell the user when it is done so they know to come back.
+     */
+    private var signingIn = false
 
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
@@ -229,10 +241,13 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         installPageScript()
 
         webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                handleExternalUrl(request.url)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (request.isForMainFrame) trackSignIn(request.url)
+                return handleExternalUrl(request.url)
+            }
 
             override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                url?.let { trackSignIn(Uri.parse(it)) }
                 if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock, ambient), null)
                 // A fresh page has lost the skip segments: load them again for the next video.
                 lastVideoId = null
@@ -241,12 +256,16 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 // Without this the whole app would crash together with the page.
-                Diagnostics.note(this@MainActivity, "процесс страницы ${if (detail.didCrash()) "упал" else "убит системой"}")
+                Diagnostics.note(
+                    this@MainActivity,
+                    getString(if (detail.didCrash()) R.string.diag_renderer_crashed else R.string.diag_renderer_killed),
+                )
                 if (view === webView) handler.post { recreateWebView() }
                 return true
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
+                url?.let { trackSignIn(Uri.parse(it)) }
                 if (injectOnPageLoad) view.evaluateJavascript(Scripts.page(adBlock, ambient), null)
                 view.evaluateJavascript(Scripts.visible(started) + Scripts.ambientStrength(ambientStrength), null)
             }
@@ -417,6 +436,48 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         suspended = false
     }
 
+    private fun trackSignIn(uri: Uri) {
+        val host = uri.host ?: return
+        if (host.startsWith("accounts.google.")) {
+            signingIn = true
+        } else if (signingIn && (host == "youtube.com" || host.endsWith(".youtube.com"))) {
+            // Back on YouTube: signed in (accounts.youtube.com sets the session), or cancelled.
+            signingIn = false
+            if (!started) showSignedInNotice() else scheduleIdleSuspend()
+        }
+    }
+
+    /** "Signed in, tap to return": the user is still in the app that confirmed the sign-in. */
+    @SuppressLint("MissingPermission")
+    private fun showSignedInNotice() {
+        val notifications = NotificationManagerCompat.from(this)
+        if (!notifications.areNotificationsEnabled()) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(SIGN_IN_CHANNEL, getString(R.string.signin_channel), NotificationManager.IMPORTANCE_HIGH),
+            )
+        }
+        val open = PendingIntent.getActivity(
+            this,
+            SIGN_IN_NOTIFICATION_ID,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        notifications.notify(
+            SIGN_IN_NOTIFICATION_ID,
+            NotificationCompat.Builder(this, SIGN_IN_CHANNEL)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setColor(ContextCompat.getColor(this, R.color.power_on))
+                .setContentTitle(getString(R.string.signin_done_title))
+                .setContentText(getString(R.string.signin_done_text))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .build(),
+        )
+    }
+
     private fun scheduleIdleSuspend() {
         handler.removeCallbacks(suspendIdle)
         if (!started && !PlayerBridge.info.playing) handler.postDelayed(suspendIdle, IDLE_SUSPEND_MS)
@@ -436,6 +497,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
         }
         val host = uri.host ?: return false
         if (INTERNAL_HOSTS.any { host == it || host.endsWith(".$it") }) return false
+        // Google sign-in may go through a country domain: google.com.ua, google.by, google.kz...
+        if (GOOGLE_COUNTRY_HOST.matches(host)) return false
         try {
             startActivity(Intent(Intent.ACTION_VIEW, uri))
         } catch (e: ActivityNotFoundException) {
@@ -514,6 +577,7 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
     override fun onStart() {
         super.onStart()
         started = true
+        NotificationManagerCompat.from(this).cancel(SIGN_IN_NOTIFICATION_ID)
         wake()
         webView.onResume()
         webView.settings.loadsImagesAutomatically = true
@@ -576,12 +640,14 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 suspendIdle.run()
             }
         }
-        val action = if (now) "страница перезагружена" else "страница обновится на следующем треке"
-        Diagnostics.note(this, "мало памяти (уровень $level), $action")
+        Diagnostics.note(
+            this,
+            getString(if (now) R.string.diag_low_memory_reloaded else R.string.diag_low_memory_pending, level),
+        )
     }
 
     override fun onDestroy() {
-        Diagnostics.note(this, "экран закрыт: ${if (isFinishing) "пользователем" else "системой"}")
+        Diagnostics.note(this, getString(if (isFinishing) R.string.diag_closed_user else R.string.diag_closed_system))
         handler.removeCallbacks(pollState)
         handler.removeCallbacks(suspendIdle)
         PlayerBridge.removeListener(this)
@@ -686,6 +752,10 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
 
     companion object {
         private const val HOME_URL = "https://m.youtube.com/"
+        private const val SIGN_IN_CHANNEL = "sign_in"
+
+        /** The player notification uses 1. */
+        private const val SIGN_IN_NOTIFICATION_ID = 2
         private const val STATE_POLL_MS = 5000L
         private const val BRIDGE_STALE_MS = 6000L
         private const val SAVE_INTERVAL_MS = 5000L
@@ -715,6 +785,8 @@ class MainActivity : AppCompatActivity(), PlayerBridge.Controller, PlayerBridge.
                 updatedAt = SystemClock.elapsedRealtime(),
             )
         }
+
+        private val GOOGLE_COUNTRY_HOST = Regex("(.+\\.)?google(\\.com?)?\\.[a-z]{2,3}")
 
         private val INTERNAL_HOSTS = listOf(
             "youtube.com",

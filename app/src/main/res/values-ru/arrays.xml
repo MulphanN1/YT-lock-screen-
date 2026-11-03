@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="sponsor_categories_names">
+        <item>Немузыкальные части в клипах</item>
+        <item>Реклама спонсоров</item>
+        <item>Самореклама автора</item>
+        <item>«Подпишитесь, поставьте лайк»</item>
+        <item>Заставки и интро</item>
+        <item>Концовки и титры</item>
+        <item>Превью «в этом видео»</item>
+        <item>Отступления не по теме</item>
+    </string-array>
+</resources>
